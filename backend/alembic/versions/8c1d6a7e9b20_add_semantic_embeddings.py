@@ -55,6 +55,9 @@ def upgrade() -> None:
         "semantic_embeddings",
         ["entity_type", "entity_id"],
     )
+    op.execute(
+        "ALTER TABLE semantic_embeddings ALTER COLUMN embedding TYPE VECTOR(1536) USING embedding::vector"
+    )
     op.create_index(
         "ix_semantic_embeddings_source_hash",
         "semantic_embeddings",
