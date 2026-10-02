@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies.auth import get_current_user
 from app.db.database import get_db
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
+from app.models.user import User
 from app.schemas.matching import MatchResponse
 from app.services.matching.service import (
     match_candidate_to_job_from_db,
@@ -25,36 +27,26 @@ router = APIRouter(
 )
 async def match_job(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Match the development candidate profile against a job.
-
-    Authentication/user scoping will replace the temporary
-    candidate resolution once authentication is introduced.
+    Match the authenticated user's career profile against a job.
     """
 
-    # --------------------------------------------------------
-    # Temporary development candidate resolution
-    # --------------------------------------------------------
-
-    result = await session.execute(
-        select(CareerProfile)
-        .order_by(CareerProfile.id)
-        .limit(1)
+    profile_result = await session.execute(
+        select(CareerProfile).where(
+            CareerProfile.user_id == current_user.id
+        )
     )
 
-    profile = result.scalar_one_or_none()
+    profile = profile_result.scalar_one_or_none()
 
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Career profile not found",
         )
-
-    # --------------------------------------------------------
-    # Verify that the requested job exists
-    # --------------------------------------------------------
 
     job_result = await session.execute(
         select(Job.id).where(Job.id == job_id)
@@ -68,10 +60,6 @@ async def match_job(
             detail="Job not found",
         )
 
-    # --------------------------------------------------------
-    # Run matching engine
-    # --------------------------------------------------------
-
     match_result = await match_candidate_to_job_from_db(
         profile_id=profile.id,
         job_id=job_id,
@@ -83,10 +71,6 @@ async def match_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Unable to calculate job match",
         )
-
-    # --------------------------------------------------------
-    # Build API response
-    # --------------------------------------------------------
 
     return MatchResponse(
         job_id=job_id,
