@@ -51,7 +51,15 @@ async def test_register_creates_user_profile_and_token(
 
     assert user.password_hash != "TestPassword123!"
     assert user.password_hash
-    assert user.career_profile is not None
+
+    profile_result = await session.execute(
+        select(CareerProfile).where(
+            CareerProfile.user_id == user.id
+        )
+    )
+    profile = profile_result.scalar_one_or_none()
+
+    assert profile is not None
 
 
 @pytest.mark.asyncio
