@@ -6,8 +6,8 @@ from sqlalchemy import select
 from app.models.career_profile import CareerProfile
 from app.models.skill import Skill
 from app.models.skill_catalog import SkillCatalog
-from app.models.user import User
 from app.services.matching.candidate_loader import load_candidate_snapshot
+from tests.conftest import create_test_user
 
 
 async def get_or_create_skill(
@@ -42,7 +42,7 @@ async def test_load_candidate_snapshot(session):
     # -------------------------
     # Create user
     # -------------------------
-    user = User(
+    user = create_test_user(
         email=f"matching-{uuid.uuid4()}@example.com"
     )
 
