@@ -4,6 +4,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.api.dependencies.auth import get_current_user
+from app.core.security import create_access_token
 from app.db.database import get_db
 from app.main import app
 from app.models.career_profile import CareerProfile
@@ -13,6 +15,7 @@ from app.models.job_requirement_skill import JobRequirementSkill
 from app.models.skill import Skill
 from app.models.skill_catalog import SkillCatalog
 from app.models.user import User
+from tests.conftest import create_test_user
 
 
 async def get_or_create_skill(
@@ -56,7 +59,7 @@ async def test_match_job_api(
     # Candidate
     # ========================================================
 
-    user = User(
+    user = create_test_user(
         email=f"api-match-{uuid.uuid4()}@example.com"
     )
 
@@ -188,6 +191,7 @@ async def test_match_job_api(
     # API request
     # ========================================================
 
+    token = create_access_token(user.id)
     transport = ASGITransport(app=app)
 
     async with AsyncClient(
@@ -195,7 +199,8 @@ async def test_match_job_api(
         base_url="http://test",
     ) as client:
         response = await client.post(
-            f"/api/v1/matching/jobs/{job.id}"
+            f"/api/v1/matching/jobs/{job.id}",
+            headers={"Authorization": f"Bearer {token}"},
         )
 
     # ========================================================
@@ -257,6 +262,13 @@ async def test_match_job_api_returns_404_for_missing_profile(
 
     await session.commit()
 
+    user = create_test_user(
+        email=f"missing-profile-{uuid.uuid4()}@example.com"
+    )
+    session.add(user)
+    await session.commit()
+
+    token = create_access_token(user.id)
     job_id = uuid.uuid4()
 
     transport = ASGITransport(app=app)
@@ -266,7 +278,8 @@ async def test_match_job_api_returns_404_for_missing_profile(
         base_url="http://test",
     ) as client:
         response = await client.post(
-            f"/api/v1/matching/jobs/{job_id}"
+            f"/api/v1/matching/jobs/{job_id}",
+            headers={"Authorization": f"Bearer {token}"},
         )
 
     assert response.status_code == 404
@@ -290,7 +303,7 @@ async def test_match_job_api_returns_404_for_missing_job(
     # Create a valid candidate profile.
     # --------------------------------------------------------
 
-    user = User(
+    user = create_test_user(
         email=f"missing-api-job-{uuid.uuid4()}@example.com"
     )
 
@@ -307,6 +320,8 @@ async def test_match_job_api_returns_404_for_missing_job(
     session.add(profile)
     await session.commit()
 
+    token = create_access_token(user.id)
+
     # --------------------------------------------------------
     # Use a job ID that does not exist.
     # --------------------------------------------------------
@@ -320,7 +335,8 @@ async def test_match_job_api_returns_404_for_missing_job(
         base_url="http://test",
     ) as client:
         response = await client.post(
-            f"/api/v1/matching/jobs/{missing_job_id}"
+            f"/api/v1/matching/jobs/{missing_job_id}",
+            headers={"Authorization": f"Bearer {token}"},
         )
 
     assert response.status_code == 404
