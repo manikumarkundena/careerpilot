@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import jwt
+from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 
 from app.core.config import settings
@@ -37,15 +38,19 @@ def create_access_token(user_id: UUID) -> str:
 
 
 def decode_access_token(token: str) -> UUID:
-    payload = jwt.decode(
-        token,
-        settings.jwt_secret_key,
-        algorithms=[settings.jwt_algorithm],
-    )
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
 
-    subject = payload.get("sub")
+        subject = payload.get("sub")
 
-    if not subject:
-        raise ValueError("Token subject missing")
+        if not subject:
+            raise ValueError("Token subject missing")
 
-    return UUID(subject)
+        return UUID(subject)
+
+    except (InvalidTokenError, ValueError, TypeError) as exc:
+        raise ValueError("Invalid or expired access token") from exc
