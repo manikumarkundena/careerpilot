@@ -94,7 +94,10 @@ async def test_db_matching_persists_and_reuses_semantic_embeddings(session):
 
     assert first is not None
     assert first.semantic_similarity == pytest.approx(1.0)
-    assert first.score == pytest.approx(100.0)
+    # One unmatched requirement contributes 0 requirement coverage.
+    # With semantic similarity at 1.0, normalized hybrid weights are:
+    # skill 0.45 + semantic 0.20 = 65.0.
+    assert first.score == pytest.approx(65.0)
     assert len(provider.calls) == 2
 
     stored = (
@@ -122,7 +125,7 @@ async def test_db_matching_persists_and_reuses_semantic_embeddings(session):
 
     assert second is not None
     assert second.semantic_similarity == pytest.approx(1.0)
-    assert second.score == pytest.approx(100.0)
+    assert second.score == pytest.approx(65.0)
     assert len(provider.calls) == 2
 
 
