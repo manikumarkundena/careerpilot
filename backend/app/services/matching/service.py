@@ -114,6 +114,51 @@ def match_candidate_to_job(
     )
 
 
+def build_candidate_semantic_text_from_snapshot(candidate) -> str:
+    return build_candidate_semantic_text(
+        headline=candidate.headline,
+        summary=candidate.summary,
+        target_roles=candidate.target_roles,
+        skills=candidate.skills.keys(),
+        experiences=[
+            " ".join(str(value) for value in (
+                item.get("role"), item.get("company"), item.get("description")
+            ) if value)
+            for item in candidate.experience
+        ],
+        projects=[
+            " ".join(str(value) for value in (
+                item.get("name"), item.get("description"), item.get("technologies")
+            ) if value)
+            for item in candidate.projects
+        ],
+        education=[
+            " ".join(str(value) for value in (
+                item.get("degree"), item.get("field_of_study"), item.get("institution")
+            ) if value)
+            for item in candidate.education
+        ],
+        certifications=[
+            " ".join(str(value) for value in (
+                item.get("name"), item.get("issuer"), item.get("description")
+            ) if value)
+            for item in candidate.certifications
+        ],
+    )
+
+
+def build_job_semantic_text_from_snapshot(job) -> str:
+    return build_job_semantic_text(
+        title=job.title,
+        company=job.company or "",
+        description=job.description or "",
+        location=job.location,
+        employment_type=job.employment_type,
+        experience_level=job.experience_level,
+        requirements=[item.text for item in job.requirements],
+    )
+
+
 async def match_candidate_to_job_from_db(
     *,
     profile_id: UUID,
