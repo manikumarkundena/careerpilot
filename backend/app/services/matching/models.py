@@ -25,14 +25,14 @@ class MatchResult:
     missing_skills: list[str]
     matched_requirements: list[RequirementMatch]
     gaps: list[str]
+    semantic_similarity: float | None = None
 
     @property
     def score(self) -> float:
-        return round(
-            (
-                self.skill_coverage * 0.6
-                + self.requirement_coverage * 0.4
-            )
-            * 100,
-            2,
+        from app.services.matching.hybrid import calculate_hybrid_score
+
+        return calculate_hybrid_score(
+            skill_coverage=self.skill_coverage,
+            requirement_coverage=self.requirement_coverage,
+            semantic_similarity=self.semantic_similarity,
         )
