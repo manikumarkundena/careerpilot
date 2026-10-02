@@ -17,6 +17,9 @@ from app.services.matching.semantic_text import (
     build_candidate_semantic_text,
     build_job_semantic_text,
 )
+from app.services.matching.embedding_store import get_or_create_embedding
+from app.services.matching.embeddings import EmbeddingError, EmbeddingProvider
+from app.services.matching.hybrid import calculate_semantic_similarity
 
 
 def calculate_skill_coverage(
@@ -168,6 +171,7 @@ async def match_candidate_to_job_from_db(
     profile_id: UUID,
     job_id: UUID,
     session: AsyncSession,
+    embedding_provider: EmbeddingProvider | None = None,
 ) -> MatchResult | None:
     candidate = await load_candidate_snapshot(
         profile_id,
@@ -195,8 +199,35 @@ async def match_candidate_to_job_from_db(
         for requirement in job.requirements
     ]
 
-    return match_candidate_to_job(
+    result = match_candidate_to_job(
         candidate_skills=candidate.skills,
         required_skills=job.required_skills,
         requirements=requirements,
     )
+
+    if embedding_provider is None:
+        return result
+
+    try:
+        candidate_embedding = await get_or_create_embedding(
+            entity_type="career_profile",
+            entity_id=candidate.profile_id,
+            source_text=build_candidate_semantic_text_from_snapshot(candidate),
+            provider=embedding_provider,
+            session=session,
+        )
+        job_embedding = await get_or_create_embedding(
+            entity_type="job",
+            entity_id=job.job_id,
+            source_text=build_job_semantic_text_from_snapshot(job),
+            provider=embedding_provider,
+            session=session,
+        )
+    except EmbeddingError:
+        return result
+
+    result.semantic_similarity = calculate_semantic_similarity(
+        candidate_embedding.embedding,
+        job_embedding.embedding,
+    )
+    return result
