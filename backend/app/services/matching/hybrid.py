@@ -32,8 +32,9 @@ def calculate_hybrid_score(*, skill_coverage: float, requirement_coverage: float
     skill = max(0.0, min(1.0, skill_coverage))
     requirement = max(0.0, min(1.0, requirement_coverage))
     if semantic_similarity is None:
-        active_total = skill_weight + requirement_weight
-        score = (skill * skill_weight + requirement * requirement_weight) / active_total
+        # Preserve the established deterministic matcher contract until
+        # semantic evidence is actually available.
+        score = skill * 0.6 + requirement * 0.4
     else:
         semantic = max(0.0, min(1.0, semantic_similarity))
         score = skill * skill_weight + requirement * requirement_weight + semantic * semantic_weight
