@@ -39,7 +39,7 @@ async def session():
 
     async with TestSessionLocal() as session:
         await session.execute(
-            text("TRUNCATE TABLE jobs CASCADE")
+            text("TRUNCATE TABLE semantic_embeddings, jobs CASCADE")
         )
         await session.commit()
 
