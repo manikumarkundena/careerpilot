@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
+from app.models.job_requirement import JobRequirement
 from app.services.matching.embeddings import EmbeddingError
 from app.services.matching.service import match_candidate_to_job_from_db
 from app.models.semantic_embedding import SemanticEmbedding
@@ -64,6 +65,16 @@ async def create_candidate_and_job(session):
         application_url="https://example.com/apply",
     )
     session.add(job)
+    await session.flush()
+
+    session.add(
+        JobRequirement(
+            job_id=job.id,
+            requirement_type="skill",
+            text="Production Java experience",
+            importance=1.0,
+        )
+    )
     await session.commit()
 
     return profile, job
@@ -169,5 +180,7 @@ async def test_db_matching_falls_back_when_embedding_provider_fails(session):
     assert result.semantic_similarity is None
 
     # No semantic contribution means the deterministic 60/40
-    # compatibility score remains in effect.
+    # compatibility score remains in effect. The fixture has one
+    # unmatched requirement, so skill coverage is 1.0 and requirement
+    # coverage is 0.0 -> 60/40 score = 60.0.
     assert result.score == pytest.approx(60.0)
