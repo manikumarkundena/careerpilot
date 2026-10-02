@@ -13,6 +13,10 @@ from app.services.matching.requirement_matcher import (
     match_requirement,
 )
 from app.services.matching.skill_matcher import match_skills
+from app.services.matching.semantic_text import (
+    build_candidate_semantic_text,
+    build_job_semantic_text,
+)
 
 
 def calculate_skill_coverage(
