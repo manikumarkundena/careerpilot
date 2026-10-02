@@ -2,12 +2,35 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Integer, String, Text, UniqueConstraint
+from sqlalchemy import Integer, String, UniqueConstraint
+from sqlalchemy.types import UserDefinedType
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 from app.models.mixins import TimestampMixin, UUIDMixin
+
+
+class Vector1536(UserDefinedType):
+    cache_ok = True
+
+    def get_col_spec(self, **kwargs) -> str:
+        return "VECTOR(1536)"
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            return "[" + ",".join(str(float(item)) for item in value) + "]"
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None:
+                return None
+            return [float(item) for item in value.strip("[]").split(",") if item]
+        return process
+
 
 
 class SemanticEmbedding(UUIDMixin, TimestampMixin, Base):
@@ -33,10 +56,8 @@ class SemanticEmbedding(UUIDMixin, TimestampMixin, Base):
         String(64),
         nullable=False,
     )
-    # Stored as pgvector text representation for this first persistence step.
-    # The next vector-search step will use the native VECTOR column/operator.
-    embedding: Mapped[str] = mapped_column(
-        Text,
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector1536,
         nullable=False,
     )
 
