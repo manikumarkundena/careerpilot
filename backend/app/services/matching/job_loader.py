@@ -29,6 +29,7 @@ class JobSnapshot:
     description: str | None
     employment_type: str | None
     experience_level: str | None
+    application_url: str | None
     requirements: list[JobRequirementSnapshot] = field(
         default_factory=list
     )
@@ -90,6 +91,7 @@ async def load_job_snapshot(
         description=job.description,
         employment_type=job.employment_type,
         experience_level=job.experience_level,
+        application_url=job.application_url,
         requirements=requirements,
         required_skills=required_skills,
     )
