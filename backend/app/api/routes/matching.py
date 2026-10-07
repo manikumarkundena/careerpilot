@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.embedding import get_embedding_provider
 from app.db.database import get_db
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
@@ -29,6 +30,7 @@ async def match_job(
     job_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    embedding_provider = Depends(get_embedding_provider),
 ):
     """
     Match the authenticated user's career profile against a job.
@@ -64,6 +66,7 @@ async def match_job(
         profile_id=profile.id,
         job_id=job_id,
         session=session,
+        embedding_provider=embedding_provider,
     )
 
     if match_result is None:
@@ -75,6 +78,7 @@ async def match_job(
     return MatchResponse(
         job_id=job_id,
         score=match_result.score,
+        semantic_similarity=match_result.semantic_similarity,
         skill_coverage=match_result.skill_coverage,
         requirement_coverage=(
             match_result.requirement_coverage
