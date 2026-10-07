@@ -24,7 +24,7 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
         if profile_skill.skill is not None
     ]
     requirements = list(job.requirements)
-    target_keywords = _extract_target_keywords(job, requirements)
+    target_keywords = _extract_target_keywords(requirements)
 
     gap_analysis = analyze_job_requirements(requirements, set(candidate_skills))
     optimization = optimize_resume_for_job(
@@ -34,18 +34,24 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
         gap_analysis=gap_analysis,
     )
 
+    selected_skills = set(optimization.prioritized_skills)
     document = ResumeDocument(
-        name=_text(profile, profile.user.display_name if profile.user else None, "profile", "display_name"),
+        name=_text(
+            profile,
+            profile.user.display_name if profile.user else None,
+            "profile",
+            "display_name",
+        ),
         headline=_text(profile, profile.headline, "profile", "headline"),
         summary=_text(profile, profile.summary, "profile", "summary"),
         skills=[
             ResumeSkill(
-                name=skill,
+                name=profile_skill.skill.name,
                 source=ResumeSource("skill", str(profile_skill.skill.id), "name"),
             )
             for profile_skill in profile.skills
             if profile_skill.skill is not None
-            and skill_in_set(skill, set(optimization.prioritized_skills))
+            and skill_in_set(profile_skill.skill.name, selected_skills)
         ],
         experience=_build_experience(profile, optimization),
         projects=_build_projects(profile, optimization),
@@ -64,15 +70,13 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
     return document, gap_analysis
 
 
-def _extract_target_keywords(job, requirements) -> set[str]:
+def _extract_target_keywords(requirements) -> set[str]:
     keywords: set[str] = set()
     for requirement in requirements:
         for requirement_skill in requirement.skills:
             skill = getattr(requirement_skill, "skill", None)
             if skill is not None:
                 keywords.add(skill.name)
-    if job.title:
-        keywords.add(job.title)
     return keywords
 
 
@@ -93,7 +97,9 @@ def _build_experience(profile, optimization):
                     text=item.description,
                     source=ResumeSource("experience", str(item.id), "description"),
                 )
-            ] if item.description else [],
+            ]
+            if item.description
+            else [],
             source=ResumeSource("experience", str(item.id), "description"),
         )
         for item in profile.experience
@@ -118,7 +124,9 @@ def _build_projects(profile, optimization):
                     text=item.description,
                     source=ResumeSource("project", str(item.id), "description"),
                 )
-            ] if item.description else [],
+            ]
+            if item.description
+            else [],
             source=ResumeSource("project", str(item.id), "description"),
         )
         for item in profile.projects
@@ -129,7 +137,11 @@ def _build_projects(profile, optimization):
 def _build_education(profile):
     return [
         ResumeEntry(
-            title=f"{item.degree}{f' in {item.field_of_study}' if item.field_of_study else ''}",
+            title=(
+                f"{item.degree}{f' in {item.field_of_study}' if item.field_of_study else ''}"
+                if item.degree
+                else item.field_of_study or "Education"
+            ),
             organization=item.institution,
             location=None,
             dates=_date_range(item.start_date, item.end_date),
@@ -138,7 +150,9 @@ def _build_education(profile):
                     text=item.description,
                     source=ResumeSource("education", str(item.id), "description"),
                 )
-            ] if item.description else [],
+            ]
+            if item.description
+            else [],
             source=ResumeSource("education", str(item.id), "degree"),
         )
         for item in profile.education
@@ -151,13 +165,15 @@ def _build_certifications(profile):
             title=item.name,
             organization=item.issuer,
             location=None,
-            dates=_date_range(item.issue_date, item.expiration_date),
+            dates=_date_range(item.issue_date, item.expiry_date),
             bullets=[
                 ResumeText(
                     text=item.description,
                     source=ResumeSource("certification", str(item.id), "description"),
                 )
-            ] if item.description else [],
+            ]
+            if item.description
+            else [],
             source=ResumeSource("certification", str(item.id), "name"),
         )
         for item in profile.certifications
@@ -176,9 +192,11 @@ def _text(profile, value, source_type, field):
 def _date_range(start, end):
     if start is None and end is None:
         return None
-    start_text = start.isoformat() if start else "Present"
-    end_text = end.isoformat() if end else "Present"
-    return f"{start_text} – {end_text}"
+    if start is None:
+        return end.isoformat()
+    if end is None:
+        return f"{start.isoformat()} – Present"
+    return f"{start.isoformat()} – {end.isoformat()}"
 
 
 def skill_in_set(skill: str, selected: set[str]) -> bool:
