@@ -12,6 +12,8 @@ from app.services.matching.candidate_loader import (
     load_candidate_snapshot,
 )
 from app.services.matching.job_loader import (
+    JobRequirementSnapshot,
+    JobSnapshot,
     load_job_snapshot,
 )
 from app.services.matching.models import MatchResult
