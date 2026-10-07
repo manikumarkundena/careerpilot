@@ -247,7 +247,7 @@ async def rank_jobs_for_candidate(
     search: str | None = None,
     limit: int = 20,
 ) -> list[tuple[JobSnapshot, MatchResult]] | None:
-    """Rank active jobs for one candidate using the same match engine."""
+    """Rank active jobs using deterministic matching, then semantic reranking."""
     candidate = await load_candidate_snapshot(profile_id, session)
     if candidate is None:
         return None
@@ -263,6 +263,10 @@ async def rank_jobs_for_candidate(
             | Job.description.ilike(pattern)
         )
 
+    # Keep the candidate pool bounded. Deterministic ranking happens first;
+    # semantic ranking is then applied only to the strongest candidates.
+    pool_size = min(max(limit * 5, 50), 200)
+
     result = await session.execute(
         select(Job)
         .options(
@@ -272,38 +276,27 @@ async def rank_jobs_for_candidate(
         )
         .where(*filters)
         .order_by(Job.posted_at.desc().nullslast(), Job.created_at.desc())
-        .limit(limit)
+        .limit(pool_size)
     )
 
     jobs = result.scalars().all()
     ranked: list[tuple[JobSnapshot, MatchResult]] = []
 
-    candidate_text = build_candidate_semantic_text_from_snapshot(candidate)
-    candidate_embedding = None
-    if embedding_provider is not None:
-        try:
-            candidate_embedding = await get_or_create_embedding(
-                entity_type="career_profile",
-                entity_id=candidate.profile_id,
-                source_text=candidate_text,
-                provider=embedding_provider,
-                session=session,
-            )
-        except EmbeddingError:
-            candidate_embedding = None
-
     for job in jobs:
         requirements = []
         required_skills = []
+
         for requirement in job.requirements:
             skills = [item.skill.name for item in requirement.skills]
             required_skills.extend(skills)
-            requirements.append({
-                "requirement_type": requirement.requirement_type,
-                "text": requirement.text,
-                "importance": requirement.importance,
-                "skills": skills,
-            })
+            requirements.append(
+                {
+                    "requirement_type": requirement.requirement_type,
+                    "text": requirement.text,
+                    "importance": requirement.importance,
+                    "skills": skills,
+                }
+            )
 
         snapshot = JobSnapshot(
             job_id=job.id,
@@ -319,7 +312,11 @@ async def rank_jobs_for_candidate(
                     requirement_id=item.id,
                     requirement_type=item.requirement_type,
                     text=item.text,
-                    importance=item.importance if item.importance is not None else 0.5,
+                    importance=(
+                        item.importance
+                        if item.importance is not None
+                        else 0.5
+                    ),
                     skills=[skill.skill.name for skill in item.skills],
                 )
                 for item in job.requirements
@@ -332,24 +329,42 @@ async def rank_jobs_for_candidate(
             required_skills=snapshot.required_skills,
             requirements=requirements,
         )
-
-        if candidate_embedding is not None:
-            try:
-                job_embedding = await get_or_create_embedding(
-                    entity_type="job",
-                    entity_id=snapshot.job_id,
-                    source_text=build_job_semantic_text_from_snapshot(snapshot),
-                    provider=embedding_provider,
-                    session=session,
-                )
-                match.semantic_similarity = calculate_semantic_similarity(
-                    candidate_embedding.embedding,
-                    job_embedding.embedding,
-                )
-            except EmbeddingError:
-                pass
-
         ranked.append((snapshot, match))
 
+    # First-stage deterministic ranking gives us a cheap semantic candidate set.
     ranked.sort(key=lambda item: item[1].score, reverse=True)
-    return ranked
+
+    if embedding_provider is not None and ranked:
+        semantic_pool = ranked[: min(len(ranked), max(limit * 5, 50))]
+
+        try:
+            candidate_embedding = await get_or_create_embedding(
+                entity_type="career_profile",
+                entity_id=candidate.profile_id,
+                source_text=build_candidate_semantic_text_from_snapshot(candidate),
+                provider=embedding_provider,
+                session=session,
+            )
+        except EmbeddingError:
+            candidate_embedding = None
+
+        if candidate_embedding is not None:
+            for snapshot, match in semantic_pool:
+                try:
+                    job_embedding = await get_or_create_embedding(
+                        entity_type="job",
+                        entity_id=snapshot.job_id,
+                        source_text=build_job_semantic_text_from_snapshot(snapshot),
+                        provider=embedding_provider,
+                        session=session,
+                    )
+                    match.semantic_similarity = calculate_semantic_similarity(
+                        candidate_embedding.embedding,
+                        job_embedding.embedding,
+                    )
+                except EmbeddingError:
+                    continue
+
+            ranked.sort(key=lambda item: item[1].score, reverse=True)
+
+    return ranked[:limit]
