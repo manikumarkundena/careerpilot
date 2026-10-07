@@ -13,6 +13,7 @@ from app.api.routes.job_intelligence import (
     router as job_intelligence_router,
 )
 from app.api.routes.matching import router as matching_router
+from app.api.routes.resume import router as resume_router
 from app.db.database import AsyncSessionLocal
 
 
@@ -28,6 +29,7 @@ app.include_router(job_router)
 app.include_router(job_ingestion_router)
 app.include_router(job_discovery_router)
 app.include_router(matching_router)
+app.include_router(resume_router)
 
 
 @app.get("/health")
