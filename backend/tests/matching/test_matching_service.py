@@ -305,3 +305,83 @@ async def test_match_missing_candidate_to_job(
     )
 
     assert result is None
+
+@pytest.mark.asyncio
+async def test_pgvector_retrieval_reranks_semantically_relevant_jobs(
+    session,
+):
+    from app.services.matching.embedding_store import get_or_create_embedding
+    from app.services.matching.service import rank_jobs_for_candidate
+
+    class FakeEmbeddingProvider:
+        async def embed(self, text: str) -> list[float]:
+            vector = [0.0] * 1536
+            if "Python" in text:
+                vector[0] = 1.0
+            else:
+                vector[1] = 1.0
+            return vector
+
+    user = create_test_user(
+        email=f"vector-rank-{uuid.uuid4()}@example.com"
+    )
+    session.add(user)
+    await session.flush()
+
+    profile = CareerProfile(
+        user_id=user.id,
+        headline="Python Developer",
+        summary="Python backend engineer",
+    )
+    session.add(profile)
+    await session.flush()
+
+    python_job = Job(
+        source="test",
+        external_id=f"vector-python-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Python Backend Engineer",
+        company="Vector Python",
+        description="Python backend services.",
+    )
+    java_job = Job(
+        source="test",
+        external_id=f"vector-java-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Java Backend Engineer",
+        company="Vector Java",
+        description="Java backend services.",
+    )
+    session.add_all([python_job, java_job])
+    await session.flush()
+
+    provider = FakeEmbeddingProvider()
+
+    await get_or_create_embedding(
+        entity_type="job",
+        entity_id=python_job.id,
+        source_text="Python Backend Engineer Python backend services.",
+        provider=provider,
+        session=session,
+    )
+    await get_or_create_embedding(
+        entity_type="job",
+        entity_id=java_job.id,
+        source_text="Java Backend Engineer Java backend services.",
+        provider=provider,
+        session=session,
+    )
+    await session.commit()
+
+    ranked = await rank_jobs_for_candidate(
+        profile_id=profile.id,
+        session=session,
+        embedding_provider=provider,
+        limit=2,
+    )
+
+    assert ranked is not None
+    assert len(ranked) == 2
+    assert ranked[0][0].job_id == python_job.id
+    assert ranked[0][1].semantic_similarity == pytest.approx(1.0)
+    assert ranked[1][0].job_id == java_job.id
