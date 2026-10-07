@@ -16,6 +16,7 @@ class RequirementMatchResponse(BaseModel):
 class MatchResponse(BaseModel):
     job_id: UUID
     score: float
+    semantic_similarity: float | None = None
     skill_coverage: float
     requirement_coverage: float
 
