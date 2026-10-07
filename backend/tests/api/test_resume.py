@@ -4,10 +4,10 @@ from uuid import uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.routes import resume as resume_route
 from app.db.database import get_db
 from app.main import app
 from app.models.job import Job
-from app.services.resume import generation as generation_module
 
 
 def make_client():
@@ -105,7 +105,7 @@ async def test_generate_resume_uses_authenticated_profile_and_returns_pdf(
         return fake_result
 
     monkeypatch.setattr(
-        generation_module,
+        resume_route,
         "generate_resume_pdf",
         fake_generate,
     )
