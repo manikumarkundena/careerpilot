@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.matching import MatchResponse, RankedJobMatchItem, RankedJobMatchResponse
 from app.services.matching.service import (
     match_candidate_to_job_from_db,
+    rank_jobs_for_candidate,
 )
 
 
