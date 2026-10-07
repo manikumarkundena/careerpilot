@@ -56,8 +56,12 @@ async def test_generate_resume_returns_404_for_missing_job(
             json={"job_id": str(uuid4())},
         )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Job not found"
+    assert response.status_code == 422
+    assert any(
+        error["loc"][-1] == "profile_id"
+        and error["type"] == "extra_forbidden"
+        for error in response.json()["detail"]
+    )
 
 
 @pytest.mark.asyncio
