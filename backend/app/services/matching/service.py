@@ -1,6 +1,12 @@
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.models.job import Job
+from app.models.job_requirement import JobRequirement
+from app.models.job_requirement_skill import JobRequirementSkill
 
 from app.services.matching.candidate_loader import (
     load_candidate_snapshot,
@@ -231,3 +237,119 @@ async def match_candidate_to_job_from_db(
         job_embedding.embedding,
     )
     return result
+
+async def rank_jobs_for_candidate(
+    *,
+    profile_id: UUID,
+    session: AsyncSession,
+    embedding_provider: EmbeddingProvider | None = None,
+    location: str | None = None,
+    search: str | None = None,
+    limit: int = 20,
+) -> list[tuple[JobSnapshot, MatchResult]] | None:
+    """Rank active jobs for one candidate using the same match engine."""
+    candidate = await load_candidate_snapshot(profile_id, session)
+    if candidate is None:
+        return None
+
+    filters = [Job.is_active.is_(True)]
+    if location:
+        filters.append(Job.location.ilike(f"%{location}%"))
+    if search:
+        pattern = f"%{search}%"
+        filters.append(
+            Job.title.ilike(pattern)
+            | Job.company.ilike(pattern)
+            | Job.description.ilike(pattern)
+        )
+
+    result = await session.execute(
+        select(Job)
+        .options(
+            selectinload(Job.requirements)
+            .selectinload(JobRequirement.skills)
+            .selectinload(JobRequirementSkill.skill)
+        )
+        .where(*filters)
+        .order_by(Job.posted_at.desc().nullslast(), Job.created_at.desc())
+        .limit(limit)
+    )
+
+    jobs = result.scalars().all()
+    ranked: list[tuple[JobSnapshot, MatchResult]] = []
+
+    candidate_text = build_candidate_semantic_text_from_snapshot(candidate)
+    candidate_embedding = None
+    if embedding_provider is not None:
+        try:
+            candidate_embedding = await get_or_create_embedding(
+                entity_type="career_profile",
+                entity_id=candidate.profile_id,
+                source_text=candidate_text,
+                provider=embedding_provider,
+                session=session,
+            )
+        except EmbeddingError:
+            candidate_embedding = None
+
+    for job in jobs:
+        requirements = []
+        required_skills = []
+        for requirement in job.requirements:
+            skills = [item.skill.name for item in requirement.skills]
+            required_skills.extend(skills)
+            requirements.append({
+                "requirement_type": requirement.requirement_type,
+                "text": requirement.text,
+                "importance": requirement.importance,
+                "skills": skills,
+            })
+
+        snapshot = JobSnapshot(
+            job_id=job.id,
+            title=job.title,
+            company=job.company,
+            location=job.location,
+            description=job.description,
+            employment_type=job.employment_type,
+            experience_level=job.experience_level,
+            application_url=job.application_url,
+            requirements=[
+                JobRequirementSnapshot(
+                    requirement_id=item.id,
+                    requirement_type=item.requirement_type,
+                    text=item.text,
+                    importance=item.importance if item.importance is not None else 0.5,
+                    skills=[skill.skill.name for skill in item.skills],
+                )
+                for item in job.requirements
+            ],
+            required_skills=list(dict.fromkeys(required_skills)),
+        )
+
+        match = match_candidate_to_job(
+            candidate_skills=candidate.skills,
+            required_skills=snapshot.required_skills,
+            requirements=requirements,
+        )
+
+        if candidate_embedding is not None:
+            try:
+                job_embedding = await get_or_create_embedding(
+                    entity_type="job",
+                    entity_id=snapshot.job_id,
+                    source_text=build_job_semantic_text_from_snapshot(snapshot),
+                    provider=embedding_provider,
+                    session=session,
+                )
+                match.semantic_similarity = calculate_semantic_similarity(
+                    candidate_embedding.embedding,
+                    job_embedding.embedding,
+                )
+            except EmbeddingError:
+                pass
+
+        ranked.append((snapshot, match))
+
+    ranked.sort(key=lambda item: item[1].score, reverse=True)
+    return ranked
