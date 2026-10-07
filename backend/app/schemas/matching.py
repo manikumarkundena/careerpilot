@@ -37,3 +37,21 @@ class MatchResponse(BaseModel):
     gaps: list[str] = Field(
         default_factory=list
     )
+
+class RankedJobMatchItem(BaseModel):
+    job_id: UUID
+    title: str
+    company: str | None
+    location: str | None
+    application_url: str | None
+    score: float
+    semantic_similarity: float | None = None
+    skill_coverage: float
+    requirement_coverage: float
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+
+
+class RankedJobMatchResponse(BaseModel):
+    items: list[RankedJobMatchItem]
+    total: int
