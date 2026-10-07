@@ -27,11 +27,14 @@ def optimize_resume_for_job(
     This layer changes ordering and selection only. It never rewrites source
     text or adds skills that are absent from the candidate profile.
     """
-    normalized_targets = {
-        keyword.strip().lower()
+    # Preserve the original keyword spelling for output while using normalized
+    # values exclusively for case-insensitive matching.
+    target_by_normalized = {
+        keyword.strip().lower(): keyword.strip()
         for keyword in target_keywords
         if keyword.strip()
     }
+    normalized_targets = set(target_by_normalized)
 
     selected = select_relevant_content(
         candidates,
@@ -47,26 +50,29 @@ def optimize_resume_for_job(
 
     prioritized_skills = tuple(
         skill_by_normalized[keyword]
-        for keyword in normalized_targets
+        for keyword in sorted(normalized_targets)
         if keyword in skill_by_normalized
     )
 
-    covered = set(prioritized_skills)
-    covered_normalized = {item.lower() for item in covered}
-    uncovered = tuple(
-        keyword
+    covered_normalized = {
+        skill.strip().lower()
+        for skill in prioritized_skills
+    }
+    covered_keywords = tuple(
+        target_by_normalized[keyword]
+        for keyword in sorted(normalized_targets)
+        if keyword in covered_normalized
+    )
+    uncovered_keywords = tuple(
+        target_by_normalized[keyword]
         for keyword in sorted(normalized_targets)
         if keyword not in covered_normalized
     )
 
-    # Keep the gap analysis in the API contract so callers can pair
-    # optimization output with explicit missing requirements.
-    if gap_analysis is not None:
-        pass
-
+    # gap_analysis remains an optional integration point for the next layer.
     return ResumeOptimization(
         selected_content=tuple(selected),
         prioritized_skills=prioritized_skills,
-        covered_keywords=tuple(sorted(covered)),
-        uncovered_keywords=uncovered,
+        covered_keywords=covered_keywords,
+        uncovered_keywords=uncovered_keywords,
     )
