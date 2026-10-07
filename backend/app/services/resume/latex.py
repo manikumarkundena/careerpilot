@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from app.services.resume.schema import ResumeDocument, ResumeEntry
 
 
@@ -29,10 +27,16 @@ def render_resume_latex(document: ResumeDocument) -> str:
     sections: list[str] = []
 
     if document.name:
-        sections.append(f"\\begin{{center}}\\textbf{{\\LARGE {escape_latex(document.name.text)}}}\\end{{center}}")
+        sections.append(
+            f"\\begin{{center}}\\textbf{{\\LARGE "
+            f"{escape_latex(document.name.text)}}}\\end{{center}}"
+        )
 
     if document.headline:
-        sections.append(f"\\begin{{center}}{escape_latex(document.headline.text)}\\end{{center}}")
+        sections.append(
+            f"\\begin{{center}}{escape_latex(document.headline.text)}"
+            f"\\end{{center}}"
+        )
 
     if document.summary:
         sections.extend([
@@ -62,14 +66,9 @@ def render_resume_latex(document: ResumeDocument) -> str:
 
     if document.links:
         sections.append(r"\section*{Links}")
-        sections.extend(
-            escape_latex(item.text)
-            for item in document.links
-        )
+        sections.extend(escape_latex(item.text) for item in document.links)
 
-    body = "
-
-".join(sections)
+    body = "\n\n".join(sections)
     return f"""\\documentclass[10pt]{{article}}
 \\usepackage[margin=0.65in]{{geometry}}
 \\usepackage[T1]{{fontenc}}
@@ -106,7 +105,7 @@ def _append_entries(
         )
         sections.append(f"\\textbf{{{title}}}")
         if metadata:
-            sections.append(rf"\\hfill {escape_latex(metadata)}")
+            sections.append(f"\\hfill {escape_latex(metadata)}")
 
         if entry.bullets:
             sections.append(r"\begin{itemize}")
