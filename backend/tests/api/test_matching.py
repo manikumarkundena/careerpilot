@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.core.security import create_access_token
+from app.api.dependencies.embedding import get_embedding_provider
 from app.db.database import get_db
 from app.main import app
 from app.models.career_profile import CareerProfile
@@ -501,3 +502,87 @@ async def test_match_job_api_uses_authenticated_users_profile(
 
     assert response_a.json()["matched_skills"] == []
     assert response_b.json()["matched_skills"] == ["Java"]
+
+
+@pytest.mark.asyncio
+async def test_match_job_api_uses_configured_semantic_provider(
+    session,
+    override_get_db,
+):
+    class FakeEmbeddingProvider:
+        async def embed(self, text: str) -> list[float]:
+            vector = [0.0] * 1536
+            vector[0] = 1.0
+            return vector
+
+    user = create_test_user(
+        email=f"semantic-api-{uuid.uuid4()}@example.com"
+    )
+    session.add(user)
+    await session.flush()
+
+    profile = CareerProfile(
+        user_id=user.id,
+        headline="Python Developer",
+        summary="Backend developer",
+        target_roles="Backend Engineer",
+    )
+    session.add(profile)
+    await session.flush()
+
+    java = await get_or_create_skill(
+        session,
+        name="Java",
+        category="Programming Language",
+    )
+
+    job = Job(
+        source="test",
+        external_id=f"semantic-api-job-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Java Backend Engineer",
+        company="CareerPilot Test",
+        description="Build Java backend services.",
+    )
+    session.add(job)
+    await session.flush()
+
+    requirement = JobRequirement(
+        job_id=job.id,
+        requirement_type="required",
+        text="Strong Java experience",
+        importance=1.0,
+    )
+    session.add(requirement)
+    await session.flush()
+    session.add(
+        JobRequirementSkill(
+            requirement_id=requirement.id,
+            skill_id=java.id,
+        )
+    )
+    await session.commit()
+
+    app.dependency_overrides[get_embedding_provider] = (
+        lambda: FakeEmbeddingProvider()
+    )
+
+    try:
+        token = create_access_token(user.id)
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                f"/api/v1/matching/jobs/{job.id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        app.dependency_overrides.pop(get_embedding_provider, None)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["semantic_similarity"] == pytest.approx(1.0)
+    assert data["score"] == pytest.approx(20.0)
