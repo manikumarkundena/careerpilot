@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,7 @@ from app.db.database import get_db
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
 from app.models.user import User
-from app.schemas.matching import MatchResponse
+from app.schemas.matching import MatchResponse, RankedJobMatchItem, RankedJobMatchResponse
 from app.services.matching.service import (
     match_candidate_to_job_from_db,
 )
@@ -100,4 +100,62 @@ async def match_job(
             for item in match_result.matched_requirements
         ],
         gaps=match_result.gaps,
+    )
+
+
+@router.get(
+    "/jobs",
+    response_model=RankedJobMatchResponse,
+)
+async def rank_matching_jobs(
+    location: str | None = Query(default=None, max_length=255),
+    search: str | None = Query(default=None, max_length=255),
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    embedding_provider = Depends(get_embedding_provider),
+):
+    """Return the best active jobs for the authenticated candidate."""
+    profile_result = await session.execute(
+        select(CareerProfile).where(CareerProfile.user_id == current_user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Career profile not found",
+        )
+
+    ranked = await rank_jobs_for_candidate(
+        profile_id=profile.id,
+        session=session,
+        embedding_provider=embedding_provider,
+        location=location,
+        search=search,
+        limit=limit,
+    )
+    if ranked is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unable to calculate job matches",
+        )
+
+    return RankedJobMatchResponse(
+        items=[
+            RankedJobMatchItem(
+                job_id=job.job_id,
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                application_url=job.application_url,
+                score=match.score,
+                semantic_similarity=match.semantic_similarity,
+                skill_coverage=match.skill_coverage,
+                requirement_coverage=match.requirement_coverage,
+                matched_skills=match.matched_skills,
+                missing_skills=match.missing_skills,
+            )
+            for job, match in ranked
+        ],
+        total=len(ranked),
     )
