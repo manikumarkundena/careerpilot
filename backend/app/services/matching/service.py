@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,7 +26,7 @@ from app.services.matching.semantic_text import (
     build_job_semantic_text,
 )
 from app.services.matching.embedding_store import get_or_create_embedding
-from app.services.matching.embeddings import EmbeddingError, EmbeddingProvider
+from app.services.matching.embeddings import EmbeddingError, EmbeddingProvider, validate_embedding
 from app.services.matching.hybrid import calculate_semantic_similarity
 
 
@@ -240,6 +240,44 @@ async def match_candidate_to_job_from_db(
     )
     return result
 
+async def retrieve_semantically_similar_job_ids(
+    *,
+    embedding: list[float],
+    model: str,
+    dimension: int,
+    session: AsyncSession,
+    limit: int,
+) -> list[UUID]:
+    """Retrieve job IDs from pgvector using cosine distance."""
+    validate_embedding(
+        embedding,
+        expected_dimension=dimension,
+    )
+
+    vector_literal = "[" + ",".join(str(float(item)) for item in embedding) + "]"
+
+    result = await session.execute(
+        text(
+            """
+            SELECT entity_id
+            FROM semantic_embeddings
+            WHERE entity_type = 'job'
+              AND model = :model
+              AND dimension = :dimension
+            ORDER BY embedding <=> CAST(:embedding AS vector)
+            LIMIT :limit
+            """
+        ),
+        {
+            "model": model,
+            "dimension": dimension,
+            "embedding": vector_literal,
+            "limit": limit,
+        },
+    )
+    return [row[0] for row in result.fetchall()]
+
+
 async def rank_jobs_for_candidate(
     *,
     profile_id: UUID,
@@ -249,7 +287,7 @@ async def rank_jobs_for_candidate(
     search: str | None = None,
     limit: int = 20,
 ) -> list[tuple[JobSnapshot, MatchResult]] | None:
-    """Rank active jobs using deterministic matching, then semantic reranking."""
+    """Rank active jobs using pgvector retrieval followed by hybrid reranking."""
     candidate = await load_candidate_snapshot(profile_id, session)
     if candidate is None:
         return None
@@ -265,11 +303,8 @@ async def rank_jobs_for_candidate(
             | Job.description.ilike(pattern)
         )
 
-    # Keep the candidate pool bounded. Deterministic ranking happens first;
-    # semantic ranking is then applied only to the strongest candidates.
-    pool_size = min(max(limit * 5, 50), 200)
-
-    result = await session.execute(
+    retrieval_limit = min(max(limit * 10, 100), 500)
+    jobs_query = (
         select(Job)
         .options(
             selectinload(Job.requirements)
@@ -277,10 +312,40 @@ async def rank_jobs_for_candidate(
             .selectinload(JobRequirementSkill.skill)
         )
         .where(*filters)
-        .order_by(Job.posted_at.desc().nullslast(), Job.created_at.desc())
-        .limit(pool_size)
     )
 
+    # Semantic retrieval is the scalable first-stage retriever.
+    retrieved_ids: list[UUID] = []
+    if embedding_provider is not None:
+        try:
+            candidate_embedding = await get_or_create_embedding(
+                entity_type="career_profile",
+                entity_id=candidate.profile_id,
+                source_text=build_candidate_semantic_text_from_snapshot(candidate),
+                provider=embedding_provider,
+                session=session,
+            )
+            retrieved_ids = await retrieve_semantically_similar_job_ids(
+                embedding=candidate_embedding.embedding,
+                model=candidate_embedding.model,
+                dimension=candidate_embedding.dimension,
+                session=session,
+                limit=retrieval_limit,
+            )
+        except EmbeddingError:
+            retrieved_ids = []
+
+    if retrieved_ids:
+        # Preserve vector retrieval order; deterministic matching will rerank it.
+        jobs_query = jobs_query.where(Job.id.in_(retrieved_ids))
+    else:
+        # Graceful fallback for environments where semantic indexing is unavailable.
+        jobs_query = jobs_query.order_by(
+            Job.posted_at.desc().nullslast(),
+            Job.created_at.desc(),
+        ).limit(retrieval_limit)
+
+    result = await session.execute(jobs_query)
     jobs = result.scalars().all()
     ranked: list[tuple[JobSnapshot, MatchResult]] = []
 
@@ -333,12 +398,10 @@ async def rank_jobs_for_candidate(
         )
         ranked.append((snapshot, match))
 
-    # First-stage deterministic ranking gives us a cheap semantic candidate set.
-    ranked.sort(key=lambda item: item[1].score, reverse=True)
-
+    # If semantic retrieval was used, hydrate each retrieved job's embedding
+    # and calculate the final hybrid score. Cache-aware storage prevents
+    # unnecessary provider calls when embeddings are already current.
     if embedding_provider is not None and ranked:
-        semantic_pool = ranked[: min(len(ranked), max(limit * 5, 50))]
-
         try:
             candidate_embedding = await get_or_create_embedding(
                 entity_type="career_profile",
@@ -351,7 +414,7 @@ async def rank_jobs_for_candidate(
             candidate_embedding = None
 
         if candidate_embedding is not None:
-            for snapshot, match in semantic_pool:
+            for snapshot, match in ranked:
                 try:
                     job_embedding = await get_or_create_embedding(
                         entity_type="job",
@@ -367,6 +430,5 @@ async def rank_jobs_for_candidate(
                 except EmbeddingError:
                     continue
 
-            ranked.sort(key=lambda item: item[1].score, reverse=True)
-
+    ranked.sort(key=lambda item: item[1].score, reverse=True)
     return ranked[:limit]
