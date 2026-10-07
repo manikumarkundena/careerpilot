@@ -586,3 +586,208 @@ async def test_match_job_api_uses_configured_semantic_provider(
     data = response.json()
     assert data["semantic_similarity"] == pytest.approx(1.0)
     assert data["score"] == pytest.approx(20.0)
+
+
+# ============================================================
+# RANKED JOB FEED
+# ============================================================
+
+
+@pytest.mark.asyncio
+async def test_ranked_jobs_api_returns_personalized_results(
+    session,
+    override_get_db,
+):
+    user = create_test_user(
+        email=f"ranked-{uuid.uuid4()}@example.com"
+    )
+    session.add(user)
+    await session.flush()
+
+    profile = CareerProfile(
+        user_id=user.id,
+        headline="Python Developer",
+        target_roles="Backend Engineer",
+    )
+    session.add(profile)
+    await session.flush()
+
+    python = await get_or_create_skill(
+        session,
+        name="Python",
+        category="Programming Language",
+    )
+    java = await get_or_create_skill(
+        session,
+        name="Java",
+        category="Programming Language",
+    )
+
+    session.add(
+        Skill(
+            profile_id=profile.id,
+            skill_id=python.id,
+            proficiency="Advanced",
+        )
+    )
+
+    python_job = Job(
+        source="test",
+        external_id=f"rank-python-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Python Backend Engineer",
+        company="Python Corp",
+        location="Bengaluru",
+        description="Build Python backend services.",
+        application_url="https://example.com/python-apply",
+    )
+    java_job = Job(
+        source="test",
+        external_id=f"rank-java-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Java Backend Engineer",
+        company="Java Corp",
+        location="Bengaluru",
+        description="Build Java backend services.",
+        application_url="https://example.com/java-apply",
+    )
+    session.add_all([python_job, java_job])
+    await session.flush()
+
+    python_req = JobRequirement(
+        job_id=python_job.id,
+        requirement_type="required",
+        text="Python experience",
+        importance=1.0,
+    )
+    java_req = JobRequirement(
+        job_id=java_job.id,
+        requirement_type="required",
+        text="Java experience",
+        importance=1.0,
+    )
+    session.add_all([python_req, java_req])
+    await session.flush()
+
+    session.add_all(
+        [
+            JobRequirementSkill(
+                requirement_id=python_req.id,
+                skill_id=python.id,
+            ),
+            JobRequirementSkill(
+                requirement_id=java_req.id,
+                skill_id=java.id,
+            ),
+        ]
+    )
+    await session.commit()
+
+    token = create_access_token(user.id)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/v1/matching/jobs?limit=2",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] == 2
+    assert len(data["items"]) == 2
+    assert data["items"][0]["job_id"] == str(python_job.id)
+    assert data["items"][0]["title"] == "Python Backend Engineer"
+    assert data["items"][0]["score"] > data["items"][1]["score"]
+    assert data["items"][0]["skill_coverage"] == pytest.approx(1.0)
+    assert data["items"][0]["missing_skills"] == []
+    assert data["items"][0]["application_url"] == (
+        "https://example.com/python-apply"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ranked_jobs_api_supports_location_and_search_filters(
+    session,
+    override_get_db,
+):
+    user = create_test_user(
+        email=f"ranked-filter-{uuid.uuid4()}@example.com"
+    )
+    session.add(user)
+    await session.flush()
+
+    profile = CareerProfile(
+        user_id=user.id,
+        headline="Backend Developer",
+    )
+    session.add(profile)
+    await session.flush()
+
+    job = Job(
+        source="test",
+        external_id=f"rank-filter-job-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Python Platform Engineer",
+        company="Filter Corp",
+        location="Bengaluru",
+        description="Platform engineering role.",
+    )
+    other_job = Job(
+        source="test",
+        external_id=f"rank-filter-other-{uuid.uuid4()}",
+        canonical_url=f"https://example.com/jobs/{uuid.uuid4()}",
+        title="Python Platform Engineer",
+        company="Other Corp",
+        location="Hyderabad",
+        description="Platform engineering role.",
+    )
+    session.add_all([job, other_job])
+    await session.commit()
+
+    token = create_access_token(user.id)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/v1/matching/jobs"
+            "?location=Bengaluru&search=Filter&limit=10",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["job_id"] == str(job.id)
+    assert data["items"][0]["company"] == "Filter Corp"
+
+
+@pytest.mark.asyncio
+async def test_ranked_jobs_api_requires_authentication(
+    session,
+    override_get_db,
+):
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/v1/matching/jobs"
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == (
+        "Authentication required"
+    )
