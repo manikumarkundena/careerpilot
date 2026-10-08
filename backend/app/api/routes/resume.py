@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,7 @@ from app.models.career_profile import CareerProfile
 from app.models.job import Job
 from app.models.job_requirement import JobRequirement
 from app.models.job_requirement_skill import JobRequirementSkill
+from app.models.resume_version import ResumeVersion
 from app.models.skill import Skill
 from app.models.user import User
 from app.schemas.resume import ResumeGenerateRequest
@@ -23,6 +24,7 @@ from app.services.resume.generation import (
     ResumeGenerationValidationError,
     generate_resume_pdf,
 )
+from app.services.resume.persistence import persist_resume_version
 
 
 router = APIRouter(
@@ -109,6 +111,14 @@ async def generate_resume(
             detail="Resume PDF generation is temporarily unavailable",
         ) from exc
 
+    resume = await persist_resume_version(
+        session=session,
+        profile_id=profile.id,
+        target_job_id=job.id,
+        result=result,
+    )
+    await session.commit()
+
     return Response(
         content=result.pdf_bytes,
         media_type="application/pdf",
@@ -117,12 +127,75 @@ async def generate_resume(
                 'attachment; filename="careerpilot-resume.pdf"'
             ),
             "Cache-Control": "private, no-store",
+            "X-Resume-Version": str(resume.version),
             "X-Resume-Keyword-Coverage": str(
                 result.quality.keyword_coverage
             ),
             "X-Resume-Quality-Passed": str(
                 result.quality.passed
             ).lower(),
+        },
+    )
+
+
+@router.get("")
+async def list_resume_versions(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    profile = await _load_profile(session, current_user.id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Career profile not found")
+
+    result = await session.execute(
+        select(ResumeVersion)
+        .where(ResumeVersion.profile_id == profile.id)
+        .order_by(desc(ResumeVersion.version))
+    )
+    versions = result.scalars().all()
+
+    return [
+        {
+            "id": str(item.id),
+            "version": item.version,
+            "target_job_id": str(item.target_job_id),
+            "template_version": item.template_version,
+            "pdf_sha256": item.pdf_sha256,
+            "generated_at": item.generated_at,
+        }
+        for item in versions
+    ]
+
+
+@router.get("/{resume_id}/pdf")
+async def download_resume_version(
+    resume_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    profile = await _load_profile(session, current_user.id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Career profile not found")
+
+    result = await session.execute(
+        select(ResumeVersion).where(
+            ResumeVersion.id == resume_id,
+            ResumeVersion.profile_id == profile.id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume version not found")
+
+    return Response(
+        content=resume.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="careerpilot-resume-v{resume.version}.pdf"'
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Resume-Version": str(resume.version),
         },
     )
 
