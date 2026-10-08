@@ -18,6 +18,8 @@ class ResumeQualityReport:
     keyword_coverage: float
     required_skills_covered: int
     required_skills_total: int
+    must_have_coverage: float = 1.0
+    preferred_coverage: float = 1.0
     sections_present: tuple[str, ...]
     issues: list[ResumeQualityIssue] = field(default_factory=list)
 
@@ -110,6 +112,8 @@ def evaluate_resume_quality(
         required_skills_total=(
             len(gap_analysis.matched_requirements) + len(gap_analysis.gaps)
         ),
+        must_have_coverage=gap_analysis.must_have_coverage,
+        preferred_coverage=gap_analysis.preferred_coverage,
         sections_present=tuple(sections),
         issues=issues,
     )
