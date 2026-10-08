@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.services.resume.jd_intelligence import extract_requirement_keywords
 from app.services.resume.job_gap import analyze_job_requirements
 from app.services.resume.optimizer import optimize_resume_for_job
 from app.services.resume.schema import (
@@ -28,7 +29,7 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
 
     gap_analysis = analyze_job_requirements(requirements, set(candidate_skills))
     optimization = optimize_resume_for_job(
-        candidates=build_profile_content_candidates(profile),
+        candidates=build_profile_content_candidates(profile, set(candidate_skills)),
         candidate_skills=candidate_skills,
         target_keywords=target_keywords,
         gap_analysis=gap_analysis,
@@ -64,6 +65,8 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
             "target_role": job.title,
             "target_company": job.company,
             "keyword_coverage": str(gap_analysis.keyword_coverage),
+            "must_have_coverage": str(gap_analysis.must_have_coverage),
+            "preferred_coverage": str(gap_analysis.preferred_coverage),
         },
     )
 
@@ -71,13 +74,8 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
 
 
 def _extract_target_keywords(requirements) -> set[str]:
-    keywords: set[str] = set()
-    for requirement in requirements:
-        for requirement_skill in requirement.skills:
-            skill = getattr(requirement_skill, "skill", None)
-            if skill is not None:
-                keywords.add(skill.name)
-    return keywords
+    intelligence = extract_requirement_keywords(requirements)
+    return {keyword.text for keyword in intelligence.keywords}
 
 
 def _build_experience(profile, optimization):
