@@ -104,9 +104,10 @@ async def test_generate_resume_uses_authenticated_profile_and_returns_pdf(
         ),
     )
 
-    def fake_generate(profile, loaded_job):
+    def fake_generate(profile, loaded_job, *, optimize_with_ai=False):
         assert profile.user.email == email
         assert loaded_job.id == job.id
+        assert optimize_with_ai is False
         return fake_result
 
     monkeypatch.setattr(
