@@ -55,6 +55,18 @@ def build_profile_content_candidates(
             )
         )
 
+    for item in profile.achievements:
+        text = item.description or item.title
+        candidates.append(
+            ContentCandidate(
+                text=text,
+                source_type="achievement",
+                source_id=str(item.id),
+                keywords=tuple(_extract_keywords(text, known_skills)),
+                priority=2.0,
+            )
+        )
+
     for item in profile.certifications:
         text = item.description or item.name
         candidates.append(
