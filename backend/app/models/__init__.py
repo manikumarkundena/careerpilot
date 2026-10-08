@@ -13,6 +13,7 @@ from app.models.skill_alias import SkillAlias
 from app.models.skill_catalog import SkillCatalog
 from app.models.user import User
 from app.models.semantic_embedding import SemanticEmbedding
+from app.models.resume_version import ResumeVersion
 from app.models.job_requirement import JobRequirement
 from app.models.job_requirement_skill import JobRequirementSkill
 
@@ -34,4 +35,5 @@ __all__ = [
     "SkillCatalog",
     "User",
     "SemanticEmbedding",
+    "ResumeVersion",
 ]
