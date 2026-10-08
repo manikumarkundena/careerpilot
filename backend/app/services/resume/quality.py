@@ -20,7 +20,7 @@ class ResumeQualityReport:
     required_skills_total: int
     must_have_coverage: float = 1.0
     preferred_coverage: float = 1.0
-    sections_present: tuple[str, ...]
+    sections_present: tuple[str, ...] = ()
     issues: list[ResumeQualityIssue] = field(default_factory=list)
 
     @property
