@@ -22,6 +22,7 @@ from app.services.resume.generation import (
     ResumeGenerationArtifactError,
     ResumeGenerationQualityError,
     ResumeGenerationValidationError,
+    ResumeOptimizationConfigurationError,
     generate_resume_pdf,
 )
 from app.services.resume.persistence import persist_resume_version
@@ -63,7 +64,11 @@ async def generate_resume(
         )
 
     try:
-        result = generate_resume_pdf(profile, job)
+        result = generate_resume_pdf(
+            profile,
+            job,
+            optimize_with_ai=payload.optimize_with_ai,
+        )
     except ResumeGenerationValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -94,6 +99,11 @@ async def generate_resume(
                     for issue in exc.report.issues
                 ],
             },
+        ) from exc
+    except ResumeOptimizationConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
         ) from exc
     except ResumeGenerationArtifactError as exc:
         raise HTTPException(
@@ -134,6 +144,7 @@ async def generate_resume(
             "X-Resume-Quality-Passed": str(
                 result.quality.passed
             ).lower(),
+            "X-Resume-AI-Optimized": str(result.ai_optimized).lower(),
         },
     )
 
