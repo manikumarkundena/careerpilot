@@ -7,3 +7,4 @@ class ResumeGenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: UUID
+    optimize_with_ai: bool = False
