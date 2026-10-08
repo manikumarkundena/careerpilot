@@ -102,6 +102,7 @@ async def test_generate_resume_uses_authenticated_profile_and_returns_pdf(
             required_skills_total=4,
             sections_present=(),
         ),
+        ai_optimized=False,
     )
 
     def fake_generate(profile, loaded_job, *, optimize_with_ai=False):
