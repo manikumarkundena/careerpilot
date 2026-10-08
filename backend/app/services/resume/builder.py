@@ -58,8 +58,8 @@ def build_role_specific_resume(profile, job) -> tuple[ResumeDocument, object]:
         projects=_build_projects(profile, optimization),
         education=_build_education(profile),
         certifications=_build_certifications(profile),
-        achievements=[],
-        links=[],
+        achievements=_build_achievements(profile, optimization),
+        links=_build_links(profile),
         metadata={
             "target_job_id": str(job.id),
             "target_role": job.title,
@@ -129,6 +129,36 @@ def _build_projects(profile, optimization):
         )
         for item in profile.projects
         if str(item.id) in selected_ids
+    ]
+
+
+def _build_achievements(profile, optimization):
+    selected_ids = {
+        item.source_id
+        for item in optimization.selected_content
+        if item.source_type == "achievement"
+    }
+    return [
+        ResumeText(
+            text=item.description or item.title,
+            source=ResumeSource(
+                "achievement",
+                str(item.id),
+                "description" if item.description else "title",
+            ),
+        )
+        for item in profile.achievements
+        if str(item.id) in selected_ids
+    ]
+
+
+def _build_links(profile):
+    return [
+        ResumeText(
+            text=f"{item.label or item.platform}: {item.url}",
+            source=ResumeSource("link", str(item.id), "url"),
+        )
+        for item in profile.links
     ]
 
 
