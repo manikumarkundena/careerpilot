@@ -8,6 +8,8 @@ from app.api.routes import resume as resume_route
 from app.db.database import get_db
 from app.main import app
 from app.models.job import Job
+from app.services.resume.schema import ResumeDocument
+from app.services.resume.quality import ResumeQualityReport
 
 
 def make_client():
@@ -93,9 +95,12 @@ async def test_generate_resume_uses_authenticated_profile_and_returns_pdf(
 
     fake_result = SimpleNamespace(
         pdf_bytes=b"%PDF-1.7\ncareerpilot test pdf",
-        quality=SimpleNamespace(
+        document=ResumeDocument(),
+        quality=ResumeQualityReport(
             keyword_coverage=0.75,
-            passed=True,
+            required_skills_covered=3,
+            required_skills_total=4,
+            sections_present=(),
         ),
     )
 
@@ -126,6 +131,7 @@ async def test_generate_resume_uses_authenticated_profile_and_returns_pdf(
     assert response.headers["x-resume-keyword-coverage"] == "0.75"
     assert response.headers["x-resume-quality-passed"] == "true"
     assert response.content == fake_result.pdf_bytes
+    assert response.headers["x-resume-version"] == "1"
 
 
 @pytest.mark.asyncio
@@ -160,3 +166,49 @@ async def test_generate_resume_does_not_accept_profile_id(
         and error["type"] == "extra_forbidden"
         for error in response.json()["detail"]
     )
+
+
+@pytest.mark.asyncio
+async def test_resume_versions_are_user_scoped(
+    session,
+    override_get_db,
+):
+    email = f"resume-list-{uuid4()}@example.com"
+
+    async with make_client() as client:
+        register = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "TestPassword123!"},
+        )
+        token = register.json()["access_token"]
+
+        response = await client.get(
+            "/api/v1/resumes",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_resume_download_requires_ownership(
+    session,
+    override_get_db,
+):
+    email = f"resume-download-{uuid4()}@example.com"
+
+    async with make_client() as client:
+        register = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "TestPassword123!"},
+        )
+        token = register.json()["access_token"]
+
+        response = await client.get(
+            f"/api/v1/resumes/{uuid4()}/pdf",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Resume version not found"
