@@ -212,3 +212,38 @@ async def test_resume_download_requires_ownership(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Resume version not found"
+
+
+@pytest.mark.asyncio
+async def test_resume_version_detail_is_user_scoped(
+    session,
+    override_get_db,
+):
+    email = f"resume-detail-{uuid4()}@example.com"
+
+    async with make_client() as client:
+        register = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "TestPassword123!"},
+        )
+        token = register.json()["access_token"]
+
+        response = await client.get(
+            f"/api/v1/resumes/{uuid4()}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Resume version not found"
+
+
+@pytest.mark.asyncio
+async def test_resume_history_requires_authentication(
+    session,
+    override_get_db,
+):
+    async with make_client() as client:
+        response = await client.get("/api/v1/resumes")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authentication required"
