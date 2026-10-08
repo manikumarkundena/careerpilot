@@ -8,7 +8,7 @@ _STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "have",
     "in", "is", "it", "of", "on", "or", "our", "the", "to", "with", "you",
     "your", "will", "we", "this", "that", "their", "they", "work", "working",
-    "experience", "years", "strong", "good", "ability", "knowledge", "skills",
+    "experience", "years", "strong", "good", "ability", "knowledge", "skills", "api", "apis",
     "skill", "including", "using", "use", "develop", "development", "build",
     "building", "role", "team", "teams", "required", "preferred", "responsible",
 }
