@@ -55,7 +55,10 @@ def build_profile_content_candidates(
             )
         )
 
-    for item in profile.achievements:
+    # Older lightweight profile/test objects may not expose newer optional
+    # collections yet. Treat those collections as empty while keeping the
+    # persisted ORM model fully supported.
+    for item in getattr(profile, "achievements", ()):
         text = item.description or item.title
         candidates.append(
             ContentCandidate(
