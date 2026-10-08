@@ -167,6 +167,38 @@ async def list_resume_versions(
     ]
 
 
+@router.get("/{resume_id}")
+async def get_resume_version(
+    resume_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    profile = await _load_profile(session, current_user.id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Career profile not found")
+
+    result = await session.execute(
+        select(ResumeVersion).where(
+            ResumeVersion.id == resume_id,
+            ResumeVersion.profile_id == profile.id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume version not found")
+
+    return {
+        "id": str(resume.id),
+        "version": resume.version,
+        "target_job_id": str(resume.target_job_id),
+        "template_version": resume.template_version,
+        "document": resume.document_json,
+        "quality": resume.quality_report_json,
+        "pdf_sha256": resume.pdf_sha256,
+        "generated_at": resume.generated_at,
+    }
+
+
 @router.get("/{resume_id}/pdf")
 async def download_resume_version(
     resume_id: UUID,
