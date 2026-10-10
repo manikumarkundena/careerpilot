@@ -1,10 +1,13 @@
 import pytest
+from uuid import uuid4
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
 
 async def _register(client: AsyncClient, email: str) -> str:
+    local, domain = email.split('@', 1)
+    email = f'{local}+{uuid4().hex}@{domain}'
     response = await client.post(
         "/api/v1/auth/register",
         json={
