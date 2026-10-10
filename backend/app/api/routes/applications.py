@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.api.dependencies.auth import get_current_user
 from app.db.database import get_db
@@ -122,7 +123,7 @@ async def list_applications(
 
     result = await session.execute(
         select(JobApplication)
-        .join(JobApplication.job)
+        .options(joinedload(JobApplication.job))
         .where(*filters)
         .order_by(
             JobApplication.updated_at.desc(),
@@ -152,7 +153,7 @@ async def get_application(
 ):
     result = await session.execute(
         select(JobApplication)
-        .join(JobApplication.job)
+        .options(joinedload(JobApplication.job))
         .where(
             JobApplication.id == application_id,
             JobApplication.user_id == current_user.id,
