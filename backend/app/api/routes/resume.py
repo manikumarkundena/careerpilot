@@ -18,11 +18,14 @@ from app.models.resume_version import ResumeVersion
 from app.models.skill import Skill
 from app.models.user import User
 from app.schemas.resume import ResumeGenerateRequest
+from app.services.resume.ai_optimizer import ResumeOptimizationValidationError
 from app.services.resume.generation import (
     ResumeGenerationArtifactError,
     ResumeGenerationQualityError,
     ResumeGenerationValidationError,
     ResumeOptimizationConfigurationError,
+    ResumeOptimizationProviderError,
+    ResumeOptimizationTimeoutError,
     generate_resume_pdf,
 )
 from app.services.resume.persistence import persist_resume_version
@@ -103,7 +106,22 @@ async def generate_resume(
     except ResumeOptimizationConfigurationError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
+            detail="AI resume optimization is not configured on this server",
+        ) from exc
+    except ResumeOptimizationTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="AI resume optimization provider timed out; please retry",
+        ) from exc
+    except ResumeOptimizationValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI resume optimization returned an invalid response",
+        ) from exc
+    except ResumeOptimizationProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI resume optimization provider is temporarily unavailable",
         ) from exc
     except ResumeGenerationArtifactError as exc:
         raise HTTPException(
