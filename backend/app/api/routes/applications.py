@@ -180,7 +180,7 @@ async def update_application(
 ):
     result = await session.execute(
         select(JobApplication)
-        .join(JobApplication.job)
+        .options(joinedload(JobApplication.job))
         .where(
             JobApplication.id == application_id,
             JobApplication.user_id == current_user.id,
