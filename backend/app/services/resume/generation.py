@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.request import Request, urlopen
 import json
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.services.resume.ai_optimizer import (
@@ -12,8 +13,8 @@ from app.services.resume.ai_optimizer import (
 from app.services.resume.applier import apply_optimization_proposals
 from app.services.resume.artifact import PdfArtifactReport, validate_pdf_artifact
 from app.services.resume.builder import build_role_specific_resume
-from app.services.resume.llm_optimizer import LLMOptimizerConfig, LLMResumeOptimizer
 from app.services.resume.latex import render_resume_latex
+from app.services.resume.llm_optimizer import LLMOptimizerConfig, LLMResumeOptimizer
 from app.services.resume.pdf import compile_latex_to_pdf
 from app.services.resume.quality import ResumeQualityReport, evaluate_resume_quality
 from app.services.resume.schema import ResumeDocument
@@ -108,15 +109,27 @@ def _request_llm(
         method="POST",
     )
 
-    with urlopen(request, timeout=timeout) as response:
-        body = json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw_body = response.read().decode("utf-8")
+    except TimeoutError as exc:
+        raise ResumeOptimizationTimeoutError() from exc
+    except URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            raise ResumeOptimizationTimeoutError() from exc
+        raise ResumeOptimizationProviderError() from exc
+    except OSError as exc:
+        raise ResumeOptimizationProviderError() from exc
 
     try:
-        return body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ResumeOptimizationValidationError(
-            "LLM response did not contain the expected completion content"
-        ) from exc
+        body = json.loads(raw_body)
+        content = body["choices"][0]["message"]["content"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+        raise ResumeOptimizationProviderError() from exc
+
+    if not isinstance(content, str) or not content.strip():
+        raise ResumeOptimizationProviderError()
+    return content
 
 
 class ResumeGenerationValidationError(RuntimeError):
@@ -139,6 +152,14 @@ class ResumeGenerationArtifactError(RuntimeError):
 
 class ResumeOptimizationConfigurationError(RuntimeError):
     pass
+
+
+class ResumeOptimizationProviderError(RuntimeError):
+    """External AI provider failed or returned an unusable completion."""
+
+
+class ResumeOptimizationTimeoutError(ResumeOptimizationProviderError):
+    """External AI provider did not respond before its configured timeout."""
 
 
 def _expected_pdf_text(document: ResumeDocument) -> list[str]:
