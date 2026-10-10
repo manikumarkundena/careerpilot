@@ -157,9 +157,15 @@ class ResumeOptimizationConfigurationError(RuntimeError):
 class ResumeOptimizationProviderError(RuntimeError):
     """External AI provider failed or returned an unusable completion."""
 
+    def __init__(self) -> None:
+        super().__init__("AI provider request failed or returned an unusable response")
+
 
 class ResumeOptimizationTimeoutError(ResumeOptimizationProviderError):
     """External AI provider did not respond before its configured timeout."""
+
+    def __init__(self) -> None:
+        RuntimeError.__init__(self, "AI provider request timed out")
 
 
 def _expected_pdf_text(document: ResumeDocument) -> list[str]:
