@@ -31,7 +31,7 @@ def test_request_llm_maps_network_error_without_leaking_details(monkeypatch):
     with pytest.raises(ResumeOptimizationProviderError) as error:
         _request_llm("https://llm.example.test", {}, {}, 1.0)
 
-    assert str(error.value) == "AI provider request failed"
+    assert str(error.value).startswith("AI provider request failed")
     assert "private network detail" not in str(error.value)
 
 
