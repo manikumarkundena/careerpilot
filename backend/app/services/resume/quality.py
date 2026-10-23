@@ -21,6 +21,9 @@ class ResumeQualityReport:
     must_have_coverage: float = 1.0
     preferred_coverage: float = 1.0
     sections_present: tuple[str, ...] = ()
+    readiness_score: int = 0
+    score_components: dict[str, int] = field(default_factory=dict)
+    recommendations: list[str] = field(default_factory=list)
     issues: list[ResumeQualityIssue] = field(default_factory=list)
 
     @property
@@ -106,6 +109,53 @@ def evaluate_resume_quality(
             )
         )
 
+    # Transparent heuristic for improvement guidance, not a score from a
+    # specific ATS vendor or a guarantee of passing an employer's filters.
+    required_total = len(gap_analysis.matched_requirements) + len(gap_analysis.gaps)
+    required_coverage = (
+        len(gap_analysis.matched_requirements) / required_total
+        if required_total
+        else 1.0
+    )
+    structure_checks = [
+        bool(document.name and document.name.text.strip()),
+        bool(document.skills),
+        bool(document.education),
+        bool(document.experience or document.projects),
+        bool(document.summary and document.summary.text.strip()),
+    ]
+    structure_coverage = sum(structure_checks) / len(structure_checks)
+    evidence_coverage = 1.0 if document.experience or document.projects else 0.0
+    components = {
+        "job_keyword_alignment": round(max(0.0, min(1.0, gap_analysis.keyword_coverage)) * 40),
+        "required_skill_coverage": round(max(0.0, min(1.0, required_coverage)) * 30),
+        "resume_structure": round(structure_coverage * 20),
+        "experience_or_project_evidence": round(evidence_coverage * 10),
+    }
+    recommendations: list[str] = []
+    if gap_analysis.gaps:
+        recommendations.append(
+            "Review missing job requirements and add evidence only for skills you genuinely have."
+        )
+    if not document.summary or not document.summary.text.strip():
+        recommendations.append(
+            "Add a concise, role-specific summary grounded in your actual experience."
+        )
+    if not document.education:
+        recommendations.append("Add education details, including institution and qualification.")
+    if not document.experience and not document.projects:
+        recommendations.append(
+            "Add relevant experience or project evidence with concrete responsibilities and outcomes."
+        )
+    if len(document.skills) > 30:
+        recommendations.append(
+            "Trim the skills list to relevant, demonstrable skills instead of keyword stuffing."
+        )
+    if not recommendations:
+        recommendations.append(
+            "Review the resume against the job description and verify every statement before applying."
+        )
+
     return ResumeQualityReport(
         keyword_coverage=gap_analysis.keyword_coverage,
         required_skills_covered=len(gap_analysis.matched_requirements),
@@ -115,5 +165,8 @@ def evaluate_resume_quality(
         must_have_coverage=gap_analysis.must_have_coverage,
         preferred_coverage=gap_analysis.preferred_coverage,
         sections_present=tuple(sections),
+        readiness_score=sum(components.values()),
+        score_components=components,
+        recommendations=recommendations,
         issues=issues,
     )
