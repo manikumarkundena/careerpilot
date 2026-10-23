@@ -19,11 +19,13 @@ class ApplicationCreateRequest(BaseModel):
     job_id: UUID
     status: ApplicationStatus = "saved"
     notes: str | None = Field(default=None, max_length=5000)
+    resume_version_id: UUID | None = None
 
 
 class ApplicationUpdateRequest(BaseModel):
     status: ApplicationStatus | None = None
     notes: str | None = Field(default=None, max_length=5000)
+    resume_version_id: UUID | None = None
 
 
 class ApplicationResponse(BaseModel):
@@ -35,6 +37,7 @@ class ApplicationResponse(BaseModel):
     company: str
     status: ApplicationStatus
     notes: str | None
+    resume_version_id: UUID | None
     applied_at: datetime | None
     created_at: datetime
     updated_at: datetime
