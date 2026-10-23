@@ -83,13 +83,13 @@ def render_resume_latex(document: ResumeDocument) -> str:
 \\usepackage{{lmodern}}
 \\usepackage{{enumitem}}
 \\usepackage{{hyperref}}
-\\usepackage{{titlesec}}
 \\pagestyle{{empty}}
 \\setlength{{\\parindent}}{{0pt}}
-\\setlength{{\\parskip}}{{2pt}}
+\\setlength{{\\parskip}}{{1pt}}
+\\makeatletter
+\\renewcommand\\section{{\\@startsection{{section}}{{1}}{{\\z@}}{{5pt}}{{2pt}}{{\\normalfont\\normalsize\\bfseries}}}}
+\\makeatother
 \\setlist[itemize]{{leftmargin=*,nosep,topsep=2pt,parsep=0pt,partopsep=0pt}}
-\\titlespacing*{{\\section}}{{0pt}}{{5pt}}{{2pt}}
-\\titleformat{{\\section}}{{\\normalsize\\bfseries}}{{}}{{0pt}}{{}}
 \\emergencystretch=2em
 \\begin{{document}}
 \\small
