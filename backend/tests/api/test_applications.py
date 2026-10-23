@@ -84,6 +84,22 @@ async def test_create_list_filter_and_update_application(override_get_db):
         assert listed.json()["total"] == 1
         assert listed.json()["items"][0]["id"] == created["id"]
 
+        history = await client.get(
+            f"/api/v1/applications/{created['id']}/events",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        event_types = [event["event_type"] for event in history.json()]
+        assert event_types[0] == "notes_updated"
+        assert "status_changed" in event_types
+        assert "created" in event_types
+        status_event = next(
+            event for event in history.json()
+            if event["event_type"] == "status_changed"
+        )
+        assert status_event["from_status"] == "saved"
+        assert status_event["to_status"] == "applied"
+
         empty_filter = await client.get(
             "/api/v1/applications",
             headers=headers,
