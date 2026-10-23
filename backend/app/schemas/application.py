@@ -61,3 +61,12 @@ class ApplicationEventResponse(BaseModel):
     to_status: ApplicationStatus | None
     details: str | None
     created_at: datetime
+
+
+class ApplicationEmailDraftResponse(BaseModel):
+    """A concise, factual email draft; it is never sent automatically."""
+
+    subject: str
+    body: str
+    suggested_attachment: str | None = None
+    notes: list[str] = Field(default_factory=list)
