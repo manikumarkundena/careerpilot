@@ -76,9 +76,9 @@ def render_resume_latex(document: ResumeDocument) -> str:
         )
         sections.append(r"\end{itemize}")
 
-    body = "\\n\\n".join(sections)
+    body = "\n\n".join(sections)
     content_length = len(body)
-    density_command = r"\\footnotesize" if content_length > 2400 else r"\\small"
+    density_command = r"\footnotesize" if content_length > 2400 else r"\small"
     margin = "0.42in" if content_length > 2400 else "0.48in"
     return f"""\\documentclass[10pt]{{article}}
 \\usepackage[margin=0.55in,top={margin},bottom={margin}]{{geometry}}
