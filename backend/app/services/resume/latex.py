@@ -78,7 +78,7 @@ def render_resume_latex(document: ResumeDocument) -> str:
 
     body = "\n\n".join(sections)
     return f"""\\documentclass[10pt]{{article}}
-\\usepackage[margin=0.55in,top=0.48in,bottom=0.48in]{{geometry}}
+\\usepackage[margin=0.55in,top={margin},bottom={margin}]{{geometry}}
 \\usepackage[T1]{{fontenc}}
 \\usepackage{{lmodern}}
 \\usepackage{{enumitem}}
@@ -92,7 +92,7 @@ def render_resume_latex(document: ResumeDocument) -> str:
 \\setlist[itemize]{{leftmargin=*,nosep,topsep=2pt,parsep=0pt,partopsep=0pt}}
 \\emergencystretch=2em
 \\begin{{document}}
-\\small
+{density_command}
 
 {body}
 
