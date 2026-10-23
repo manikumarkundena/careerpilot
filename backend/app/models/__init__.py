@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.semantic_embedding import SemanticEmbedding
 from app.models.resume_version import ResumeVersion
 from app.models.application import JobApplication
+from app.models.application_event import ApplicationEvent
 from app.models.job_requirement import JobRequirement
 from app.models.job_requirement_skill import JobRequirementSkill
 
@@ -38,4 +39,5 @@ __all__ = [
     "SemanticEmbedding",
     "ResumeVersion",
     "JobApplication",
+    "ApplicationEvent",
 ]
