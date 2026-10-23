@@ -10,12 +10,14 @@ from sqlalchemy.orm import joinedload
 from app.api.dependencies.auth import get_current_user
 from app.db.database import get_db
 from app.models.application import JobApplication
+from app.models.application_event import ApplicationEvent
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
 from app.models.resume_version import ResumeVersion
 from app.models.user import User
 from app.schemas.application import (
     ApplicationCreateRequest,
+    ApplicationEventResponse,
     ApplicationListResponse,
     ApplicationResponse,
     ApplicationStatus,
@@ -62,7 +64,7 @@ async def _owned_resume_for_job(
     resume = result.scalar_one_or_none()
     if resume is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "Resume version must belong to your career profile "
                 "and target the same job"
@@ -122,6 +124,16 @@ async def create_application(
         ),
     )
     session.add(application)
+    await session.flush()
+    session.add(
+        ApplicationEvent(
+            application_id=application.id,
+            actor_user_id=current_user.id,
+            event_type="created",
+            to_status=application.status,
+            details="Application tracker entry created",
+        )
+    )
 
     try:
         await session.commit()
@@ -234,6 +246,10 @@ async def update_application(
         )
 
     changes = payload.model_dump(exclude_unset=True)
+    previous_status = application.status
+    previous_notes = application.notes
+    previous_resume_version_id = application.resume_version_id
+
     if "status" in changes and changes["status"] is not None:
         new_status = changes["status"]
         if new_status != "saved" and application.applied_at is None:
@@ -254,6 +270,73 @@ async def update_application(
             )
             application.resume_version_id = resume.id
 
+    if application.status != previous_status:
+        session.add(
+            ApplicationEvent(
+                application_id=application.id,
+                actor_user_id=current_user.id,
+                event_type="status_changed",
+                from_status=previous_status,
+                to_status=application.status,
+            )
+        )
+    if application.notes != previous_notes:
+        session.add(
+            ApplicationEvent(
+                application_id=application.id,
+                actor_user_id=current_user.id,
+                event_type="notes_updated",
+                details="Application notes updated",
+            )
+        )
+    if application.resume_version_id != previous_resume_version_id:
+        session.add(
+            ApplicationEvent(
+                application_id=application.id,
+                actor_user_id=current_user.id,
+                event_type=(
+                    "resume_attached"
+                    if application.resume_version_id is not None
+                    else "resume_detached"
+                ),
+                details="Linked resume version changed",
+            )
+        )
+
     await session.commit()
     await session.refresh(application)
     return _to_response(application)
+
+
+
+@router.get(
+    "/{application_id}/events",
+    response_model=list[ApplicationEventResponse],
+)
+async def list_application_events(
+    application_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's application audit trail, newest first."""
+    application_result = await session.execute(
+        select(JobApplication.id).where(
+            JobApplication.id == application_id,
+            JobApplication.user_id == current_user.id,
+        )
+    )
+    if application_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    events_result = await session.execute(
+        select(ApplicationEvent)
+        .where(ApplicationEvent.application_id == application_id)
+        .order_by(
+            ApplicationEvent.created_at.desc(),
+            ApplicationEvent.id.desc(),
+        )
+    )
+    return events_result.scalars().all()
