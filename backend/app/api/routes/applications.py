@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.dependencies.auth import get_current_user
 from app.db.database import get_db
@@ -14,6 +14,8 @@ from app.models.application_event import ApplicationEvent
 from app.models.career_profile import CareerProfile
 from app.models.job import Job
 from app.models.resume_version import ResumeVersion
+from app.models.skill import Skill
+from app.services.application_email import build_application_email_draft
 from app.models.user import User
 from app.schemas.application import (
     ApplicationCreateRequest,
@@ -340,3 +342,66 @@ async def list_application_events(
         )
     )
     return events_result.scalars().all()
+
+
+
+@router.get("/{application_id}/email-draft")
+async def draft_application_email(
+    application_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a concise email draft for review; this endpoint never sends mail."""
+    result = await session.execute(
+        select(JobApplication)
+        .options(joinedload(JobApplication.job))
+        .where(
+            JobApplication.id == application_id,
+            JobApplication.user_id == current_user.id,
+        )
+    )
+    application = result.scalar_one_or_none()
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    profile_result = await session.execute(
+        select(CareerProfile)
+        .where(CareerProfile.user_id == current_user.id)
+        .options(
+            selectinload(CareerProfile.user),
+            selectinload(CareerProfile.skills).selectinload(Skill.skill),
+            selectinload(CareerProfile.projects),
+            selectinload(CareerProfile.education),
+        )
+    )
+    profile = profile_result.scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Career profile not found")
+
+    draft = build_application_email_draft(
+        candidate_name=profile.user.display_name if profile.user else "Candidate",
+        role=application.job.title,
+        company=application.job.company,
+        skills=[
+            item.skill.name for item in profile.skills
+            if item.skill is not None
+        ],
+        projects=[
+            item.name for item in profile.projects
+            if getattr(item, "name", None)
+        ],
+        institution=next(
+            (
+                item.institution for item in profile.education
+                if getattr(item, "institution", None)
+            ),
+            None,
+        ),
+    )
+    return {
+        "subject": draft.subject,
+        "body": draft.body,
+        "suggested_attachment": draft.suggested_attachment,
+        "sent": False,
+        "review_required": True,
+    }
