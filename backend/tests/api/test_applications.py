@@ -56,6 +56,7 @@ async def test_create_list_filter_and_update_application(override_get_db):
         assert created["status"] == "saved"
         assert created["job_title"] == "Backend Engineer Intern"
         assert created["applied_at"] is None
+        assert created["resume_version_id"] is None
 
         duplicate = await client.post(
             "/api/v1/applications",
@@ -147,3 +148,26 @@ async def test_create_application_rejects_missing_job(override_get_db):
             json={"job_id": "00000000-0000-0000-0000-000000000001"},
         )
     assert response.status_code == 404
+
+
+
+@pytest.mark.asyncio
+async def test_application_rejects_resume_version_not_owned_or_for_another_job(
+    override_get_db,
+):
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        token = await _register(client, "application-resume-validation@example.com")
+        job_id = await _create_job(client)
+        response = await client.post(
+            "/api/v1/applications",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "job_id": job_id,
+                "resume_version_id": "00000000-0000-0000-0000-000000000099",
+            },
+        )
+    assert response.status_code == 422
+    assert "Resume version must belong" in response.json()["detail"]
