@@ -23,7 +23,12 @@ def escape_latex(value: str) -> str:
 
 
 def render_resume_latex(document: ResumeDocument) -> str:
-    """Render an ATS-oriented, single-column LaTeX resume."""
+    """Render a compact, single-column, text-first resume for ATS parsing.
+
+    The template prioritizes conventional headings, selectable PDF text,
+    consistent spacing, and readable density. Page count still depends on
+    the amount of source content; generation must validate the compiled PDF.
+    """
     sections: list[str] = []
 
     if document.name:
@@ -38,6 +43,13 @@ def render_resume_latex(document: ResumeDocument) -> str:
             f"\\end{{center}}"
         )
 
+    if document.links:
+        sections.append(
+            r"\begin{center}\footnotesize "
+            + r"\quad | \quad ".join(escape_latex(item.text) for item in document.links)
+            + r"\end{center}"
+        )
+
     if document.summary:
         sections.extend([
             r"\section*{Summary}",
@@ -46,7 +58,7 @@ def render_resume_latex(document: ResumeDocument) -> str:
 
     if document.skills:
         sections.extend([
-            r"\section*{Skills}",
+            r"\section*{Technical Skills}",
             escape_latex(", ".join(skill.name for skill in document.skills)),
         ])
 
@@ -64,21 +76,23 @@ def render_resume_latex(document: ResumeDocument) -> str:
         )
         sections.append(r"\end{itemize}")
 
-    if document.links:
-        sections.append(r"\section*{Links}")
-        sections.extend(escape_latex(item.text) for item in document.links)
-
     body = "\n\n".join(sections)
     return f"""\\documentclass[10pt]{{article}}
-\\usepackage[margin=0.65in]{{geometry}}
+\\usepackage[margin=0.55in,top=0.48in,bottom=0.48in]{{geometry}}
 \\usepackage[T1]{{fontenc}}
 \\usepackage{{lmodern}}
 \\usepackage{{enumitem}}
 \\usepackage{{hyperref}}
-\\setlist[itemize]{{leftmargin=*,nosep}}
+\\usepackage{{titlesec}}
 \\pagestyle{{empty}}
 \\setlength{{\\parindent}}{{0pt}}
+\\setlength{{\\parskip}}{{2pt}}
+\\setlist[itemize]{{leftmargin=*,nosep,topsep=2pt,parsep=0pt,partopsep=0pt}}
+\\titlespacing*{{\\section}}{{0pt}}{{5pt}}{{2pt}}
+\\titleformat{{\\section}}{{\\normalsize\\bfseries}}{{}}{{0pt}}{{}}
+\\emergencystretch=2em
 \\begin{{document}}
+\\small
 
 {body}
 
@@ -99,13 +113,14 @@ def _append_entries(
         title = escape_latex(entry.title)
         organization = escape_latex(entry.organization) if entry.organization else ""
         dates = escape_latex(entry.dates) if entry.dates else ""
+        location = escape_latex(entry.location) if entry.location else ""
 
         metadata = " | ".join(
-            part for part in (organization, entry.location, dates) if part
+            part for part in (organization, location, dates) if part
         )
         sections.append(f"\\textbf{{{title}}}")
         if metadata:
-            sections.append(f"\\hfill {escape_latex(metadata)}")
+            sections.append(f"\\hfill {{\\footnotesize {metadata}}}")
 
         if entry.bullets:
             sections.append(r"\begin{itemize}")
