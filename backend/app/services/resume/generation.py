@@ -60,10 +60,31 @@ def generate_resume_pdf(
     if not quality.passed:
         raise ResumeGenerationQualityError(quality)
 
+    expected_text = _expected_pdf_text(document)
+
+    # First attempt: preserve the normal readable layout.
     latex_source = render_resume_latex(document)
     pdf_bytes = compile_latex_to_pdf(latex_source)
+    artifact = validate_pdf_artifact(pdf_bytes, expected_text)
 
-    artifact = validate_pdf_artifact(pdf_bytes, _expected_pdf_text(document))
+    # Retry only when the PDF is otherwise valid and page count is the
+    # sole reason it failed validation. Never mask missing text or a bad PDF.
+    needs_compact_retry = (
+        artifact.valid_pdf_signature
+        and artifact.byte_size > 100
+        and bool(artifact.extractable_text.strip())
+        and not artifact.missing_expected_text
+        and artifact.page_count is not None
+        and artifact.page_count > 1
+    )
+
+    if needs_compact_retry:
+        compact_source = render_resume_latex(document, compact=True)
+        compact_pdf = compile_latex_to_pdf(compact_source)
+        compact_artifact = validate_pdf_artifact(compact_pdf, expected_text)
+        pdf_bytes = compact_pdf
+        artifact = compact_artifact
+
     if not artifact.passed:
         raise ResumeGenerationArtifactError(artifact)
 
