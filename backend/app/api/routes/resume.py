@@ -159,6 +159,9 @@ async def generate_resume(
             "X-Resume-Keyword-Coverage": str(
                 result.quality.keyword_coverage
             ),
+            "X-Resume-Readiness-Score": str(
+                result.quality.readiness_score
+            ),
             "X-Resume-Quality-Passed": str(
                 result.quality.passed
             ).lower(),
