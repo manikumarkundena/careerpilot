@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,12 @@ class JobApplication(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    resume_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("resume_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -56,3 +62,4 @@ class JobApplication(UUIDMixin, TimestampMixin, Base):
 
     user = relationship("User")
     job = relationship("Job")
+    resume_version = relationship("ResumeVersion")
