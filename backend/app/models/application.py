@@ -63,3 +63,9 @@ class JobApplication(UUIDMixin, TimestampMixin, Base):
     user = relationship("User")
     job = relationship("Job")
     resume_version = relationship("ResumeVersion")
+    events = relationship(
+        "ApplicationEvent",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationEvent.created_at",
+    )
