@@ -48,3 +48,16 @@ class ApplicationListResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class ApplicationEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    application_id: UUID
+    actor_user_id: UUID | None
+    event_type: str
+    from_status: ApplicationStatus | None
+    to_status: ApplicationStatus | None
+    details: str | None
+    created_at: datetime
