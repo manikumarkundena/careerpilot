@@ -70,3 +70,30 @@ def test_quality_flags_missing_candidate_name():
 
     assert any(issue.code == "missing_name" for issue in report.issues)
     assert report.passed is False
+
+
+
+def test_readiness_score_is_explainable_and_recommendations_are_actionable():
+    document = ResumeDocument(
+        name=ResumeText("Candidate", source()),
+        summary=ResumeText("Python backend developer", source()),
+        skills=[
+            ResumeSkill("Python", ResumeSource("skill", "s1", "name")),
+            ResumeSkill("FastAPI", ResumeSource("skill", "s2", "name")),
+        ],
+        education=[SimpleNamespace(title="B.E. Computer Science")],
+        projects=[SimpleNamespace(title="API project")],
+    )
+    gap_analysis = ResumeGapAnalysis(
+        gaps=(ResumeGap("Kubernetes", 0.9, False),),
+        matched_requirements=(ResumeGap("FastAPI", 1.0, True, ("FastAPI",)),),
+        keyword_coverage=0.5,
+    )
+
+    report = evaluate_resume_quality(document, gap_analysis)
+
+    assert 0 <= report.readiness_score <= 100
+    assert report.score_components["job_keyword_alignment"] == 20
+    assert report.score_components["required_skill_coverage"] == 15
+    assert sum(report.score_components.values()) == report.readiness_score
+    assert any("missing job requirements" in item for item in report.recommendations)
