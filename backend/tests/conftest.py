@@ -1,5 +1,10 @@
+import os
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -21,6 +26,27 @@ TEST_DATABASE_URL = (
 )
 
 TEST_PASSWORD = "TestPassword123!"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def migrate_test_database():
+    """Apply all Alembic migrations to the dedicated test database before tests.
+
+    Alembic reads DATABASE_URL from the environment, while test sessions use
+    TEST_DATABASE_URL directly. Temporarily point Alembic at the test database
+    so schema changes never accidentally target the development database.
+    """
+    previous_database_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+    try:
+        alembic_config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        command.upgrade(alembic_config, "head")
+    finally:
+        if previous_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_database_url
 
 
 @pytest_asyncio.fixture
