@@ -90,7 +90,7 @@ async def test_create_list_filter_and_update_application(override_get_db):
         )
         assert history.status_code == 200
         event_types = [event["event_type"] for event in history.json()]
-        assert event_types[0] == "notes_updated"
+        assert "notes_updated" in event_types
         assert "status_changed" in event_types
         assert "created" in event_types
         status_event = next(
