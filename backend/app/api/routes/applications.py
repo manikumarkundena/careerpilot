@@ -10,7 +10,9 @@ from sqlalchemy.orm import joinedload
 from app.api.dependencies.auth import get_current_user
 from app.db.database import get_db
 from app.models.application import JobApplication
+from app.models.career_profile import CareerProfile
 from app.models.job import Job
+from app.models.resume_version import ResumeVersion
 from app.models.user import User
 from app.schemas.application import (
     ApplicationCreateRequest,
@@ -35,10 +37,38 @@ def _to_response(application: JobApplication) -> ApplicationResponse:
         company=application.job.company,
         status=application.status,
         notes=application.notes,
+        resume_version_id=application.resume_version_id,
         applied_at=application.applied_at,
         created_at=application.created_at,
         updated_at=application.updated_at,
     )
+
+
+async def _owned_resume_for_job(
+    session: AsyncSession,
+    user_id: UUID,
+    job_id: UUID,
+    resume_version_id: UUID,
+) -> ResumeVersion:
+    result = await session.execute(
+        select(ResumeVersion)
+        .join(CareerProfile, CareerProfile.id == ResumeVersion.profile_id)
+        .where(
+            ResumeVersion.id == resume_version_id,
+            ResumeVersion.target_job_id == job_id,
+            CareerProfile.user_id == user_id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Resume version must belong to your career profile "
+                "and target the same job"
+            ),
+        )
+    return resume
 
 
 @router.post(
@@ -58,6 +88,15 @@ async def create_application(
             detail="Job not found",
         )
 
+    resume = None
+    if payload.resume_version_id is not None:
+        resume = await _owned_resume_for_job(
+            session,
+            current_user.id,
+            job.id,
+            payload.resume_version_id,
+        )
+
     existing = await session.execute(
         select(JobApplication).where(
             JobApplication.user_id == current_user.id,
@@ -73,6 +112,7 @@ async def create_application(
     application = JobApplication(
         user_id=current_user.id,
         job_id=job.id,
+        resume_version_id=resume.id if resume else None,
         status=payload.status,
         notes=payload.notes,
         applied_at=(
@@ -201,6 +241,18 @@ async def update_application(
         application.status = new_status
     if "notes" in changes:
         application.notes = changes["notes"]
+    if "resume_version_id" in changes:
+        resume_version_id = changes["resume_version_id"]
+        if resume_version_id is None:
+            application.resume_version_id = None
+        else:
+            resume = await _owned_resume_for_job(
+                session,
+                current_user.id,
+                application.job_id,
+                resume_version_id,
+            )
+            application.resume_version_id = resume.id
 
     await session.commit()
     await session.refresh(application)
