@@ -22,7 +22,11 @@ def escape_latex(value: str) -> str:
     return "".join(_LATEX_REPLACEMENTS.get(char, char) for char in value)
 
 
-def render_resume_latex(document: ResumeDocument) -> str:
+def render_resume_latex(
+    document: ResumeDocument,
+    *,
+    compact: bool = False,
+) -> str:
     """Render a compact, single-column, text-first resume for ATS parsing.
 
     The template prioritizes conventional headings, selectable PDF text,
@@ -78,8 +82,18 @@ def render_resume_latex(document: ResumeDocument) -> str:
 
     body = "\n\n".join(sections)
     content_length = len(body)
-    density_command = r"\footnotesize" if content_length > 2400 else r"\small"
-    margin = "0.42in" if content_length > 2400 else "0.48in"
+    if compact:
+        density_command = r"\footnotesize"
+        margin = "0.32in"
+        section_before = "3pt"
+        section_after = "1pt"
+        paragraph_skip = "0pt"
+    else:
+        density_command = r"\footnotesize" if content_length > 2400 else r"\small"
+        margin = "0.42in" if content_length > 2400 else "0.48in"
+        section_before = "5pt"
+        section_after = "2pt"
+        paragraph_skip = "1pt"
     return f"""\\documentclass[10pt]{{article}}
 \\usepackage[margin=0.55in,top={margin},bottom={margin}]{{geometry}}
 \\usepackage[T1]{{fontenc}}
@@ -88,9 +102,9 @@ def render_resume_latex(document: ResumeDocument) -> str:
 \\usepackage{{hyperref}}
 \\pagestyle{{empty}}
 \\setlength{{\\parindent}}{{0pt}}
-\\setlength{{\\parskip}}{{1pt}}
+\\setlength{{\\parskip}}{{{paragraph_skip}}}
 \\makeatletter
-\\renewcommand\\section{{\\@startsection{{section}}{{1}}{{\\z@}}{{5pt}}{{2pt}}{{\\normalfont\\normalsize\\bfseries}}}}
+\\renewcommand\\section{{\\@startsection{{section}}{{1}}{{\\z@}}{{{section_before}}}{{{section_after}}}{{\\normalfont\\normalsize\\bfseries}}}}
 \\makeatother
 \\setlist[itemize]{{leftmargin=*,nosep,topsep=2pt,parsep=0pt,partopsep=0pt}}
 \\emergencystretch=2em

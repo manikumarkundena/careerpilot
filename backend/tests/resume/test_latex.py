@@ -30,3 +30,28 @@ def test_render_resume_latex_is_single_column_and_text_first():
     assert "Candidate \\& Developer" in latex
     assert r"\begin{tabular" not in latex
     assert r"\begin{multicols" not in latex
+
+
+
+def test_compact_resume_latex_uses_tighter_layout():
+    document = ResumeDocument(
+        name=ResumeText(
+            "Candidate",
+            ResumeSource("profile", "p1", "display_name"),
+        ),
+        summary=ResumeText(
+            "Backend developer",
+            ResumeSource("profile", "p1", "summary"),
+        ),
+    )
+
+    standard = render_resume_latex(document)
+    compact = render_resume_latex(document, compact=True)
+
+    assert standard != compact
+    assert r"\footnotesize" in compact
+    assert "top=0.32in,bottom=0.32in" in compact
+    assert r"\setlength{\parskip}{0pt}" in compact
+    assert r"\@startsection{section}{1}{\z@}{3pt}{1pt}" in compact
+    assert "Candidate" in compact
+    assert "Backend developer" in compact
