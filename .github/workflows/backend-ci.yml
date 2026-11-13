@@ -55,7 +55,7 @@ jobs:
       - name: Install system tools for resume PDF validation
         run: |
           sudo apt-get update
-          sudo apt-get install --yes texlive-latex-base poppler-utils
+          sudo apt-get install --yes texlive-latex-base texlive-latex-extra poppler-utils
 
       - name: Install Python dependencies
         run: |
