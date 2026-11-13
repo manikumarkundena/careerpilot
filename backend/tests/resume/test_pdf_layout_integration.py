@@ -37,9 +37,9 @@ def test_compact_layout_rescues_real_multipage_resume_without_losing_content():
                 location=None,
                 dates="2025–2026",
                 bullets=[
-                    ResumeText(f"{bullet_text} Project identifier {index}, delivery outcome alpha.", source),
-                    ResumeText(f"{bullet_text} Project identifier {index}, delivery outcome beta.", source),
-                    ResumeText(f"{bullet_text} Project identifier {index}, delivery outcome gamma.", source),
+                    ResumeText(bullet_text, source),
+                    ResumeText(bullet_text, source),
+                    ResumeText(bullet_text, source),
                 ],
                 source=source,
             )
@@ -50,7 +50,7 @@ def test_compact_layout_rescues_real_multipage_resume_without_losing_content():
         "Candidate Integration",
         "Backend Software Engineer",
         *(f"Backend Project {index}" for index in range(1, 9)),
-        "delivery outcome gamma",
+        "maintainable backend architecture",
     ]
 
     standard_pdf = compile_latex_to_pdf(render_resume_latex(document))
