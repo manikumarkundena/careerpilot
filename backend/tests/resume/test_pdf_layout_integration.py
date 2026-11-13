@@ -21,6 +21,7 @@ _REQUIRED_TOOLS = ("pdflatex", "pdftotext", "pdfinfo")
 )
 def test_compact_layout_rescues_real_multipage_resume_without_losing_content():
     source = ResumeSource("project", "integration-fixture", "description")
+    achievement_source = ResumeSource("achievement", "integration-fixture", "achievement")
     bullet_text = (
         "Designed and developed REST APIs, integrated PostgreSQL databases, "
         "implemented secure authentication, input validation, error handling, "
@@ -30,6 +31,14 @@ def test_compact_layout_rescues_real_multipage_resume_without_losing_content():
     document = ResumeDocument(
         name=ResumeText("Candidate Integration", ResumeSource("profile", "fixture", "name")),
         headline=ResumeText("Backend Software Engineer", ResumeSource("profile", "fixture", "headline")),
+        achievements=[
+            ResumeText(
+                f"Demonstrated measurable engineering delivery and cross-functional execution "
+                f"across portfolio initiative {index:02d}.",
+                achievement_source,
+            )
+            for index in range(1, 13)
+        ],
         projects=[
             ResumeEntry(
                 title=f"Backend Project {index}",
@@ -51,6 +60,7 @@ def test_compact_layout_rescues_real_multipage_resume_without_losing_content():
         "Backend Software Engineer",
         *(f"Backend Project {index}" for index in range(1, 9)),
         "maintainable backend architecture",
+        "portfolio initiative 12",
     ]
 
     standard_pdf = compile_latex_to_pdf(render_resume_latex(document))
